@@ -1,25 +1,15 @@
-
+/build
 \#*
 *~
 .#*
 \#*\#
 
-/CouchbaseLiteProject/CouchbaseLiteProject/build/
-/CouchbaseLiteProject/.gradle/
-/CouchbaseLiteProject/.idea/workspace.xml
-/CouchbaseLiteProject/CBLite/build/
-.DS_Store
-/CouchbaseLiteProject/CBLite/src/instrumentTest/assets/local-test.properties
-/CouchbaseLiteProject/CBLiteEktorp/build/
-
 *.class
 
-
-/CouchbaseLiteProject/CBLiteJavascript/build/
-/CouchbaseLiteProject/testrepo/
-/CouchbaseLiteProject/CBLiteListener/build/
-/CouchbaseLiteProject/CBLiteEktorp/src/instrumentTest/assets/local-test.properties
-/CouchbaseLiteProject/CBLiteJavascript/src/instrumentTest/assets/local-test.properties
-/CouchbaseLiteProject/local.properties
 .idea
 *.iml
+.gradle
+local.properties
+/.DS_Store
+
+local-test.properties

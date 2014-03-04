@@ -2,9 +2,23 @@
 
 by Marty Schoch (marty@couchbase.com) + Traun Leyden (tleyden@couchbase.com)
 
-**Couchbase-Lite-Android** is the Android port of [Couchbase Lite iOS](https://github.com/couchbase/couchbase-lite-ios).  
+Couchbase-Lite-Android is a lightweight embedded NoSQL database engine for Android with the built-in ability to sync to Couchbase Server on the backend.  It is the Android port of [Couchbase Lite iOS](https://github.com/couchbase/couchbase-lite-ios).  
 
-[Click here for **official documentation for Couchbase Lite Android**](http://docs.couchbase.com/couchbase-lite/cbl-android/)
+**Update**: The project structure recently changed, here is a [mailing list post](https://groups.google.com/forum/#!topic/mobile-couchbase/Zsn8TG5F88o) describing the change, as well as [Project Structure](https://github.com/couchbase/couchbase-lite-android/wiki/Project-structure) wiki page that describes the new project structure.
+
+## Architecture
+
+![](http://tleyden-misc.s3.amazonaws.com/couchbase-lite/couchbase-lite-architecture.png)
+
+Couchbase Lite databases are able to sync with eachother via [Sync Gateway](https://github.com/couchbase/sync_gateway/) backed by [Couchbase Server](http://www.couchbase.com/couchbase-server/overview)
+
+
+## Documentation Overview
+
+* This [README](https://github.com/couchbase/couchbase-lite-android/blob/master/README.md)
+* [Official Documentation](http://docs.couchbase.com/couchbase-lite/cbl-android/) for beta2 release
+* [Javadocs](http://www.couchbase.com/autodocs/couchbase-lite-android-1.0b2/index.html) 
+* [Wiki](https://github.com/couchbase/couchbase-lite-android/wiki)
 
 ## Getting Started with Couchbase Lite
 
@@ -21,6 +35,11 @@ However, if you need to debug Couchbase Lite Android or otherwise hack on it, th
 ## Prerequisites
 
 * [Download Android Studio](http://developer.android.com/sdk/installing/studio.html) 
+
+  * If you are using the beta2 release or stable branch of Couchbase Lite, use the latest version in the stable channel (currently Android Studio 0.3.X)
+
+  * If you are using the master branch of Couchbase Lite, use the latest version in the canary channel (currently Android Studio 0.4.3)
+
 
 * Under Tools / Android / Android SDK Manager and install "Extras/Google Repository" and "Extras/Android Support Repository" (future versions of Android Studio may make this step unnecessary)
 
@@ -81,17 +100,15 @@ If you want to host and deploy your own maven artifacts, see the `upload_android
 ## Example Apps
 
 * [GrocerySync](https://github.com/couchbaselabs/GrocerySync-Android)
-* [LiteServAndroid](https://github.com/couchbaselabs/LiteServAndroid)
+* [LiteServAndroid](https://github.com/couchbaselabs/couchbase-lite-android-liteserv)
 * [CouchChatAndroid](https://github.com/couchbaselabs/CouchChatAndroid) -- just a stub at this point.
 
 ## Utilities
 
 * [CBLiteConsole](https://github.com/couchbaselabs/CBLiteConsole)
 
-## Current Status
-- Alpha / Developer Preview
-
 ## Requirements
+
 - Android 2.3 Gingerbread (API level 9) and above.
 
 

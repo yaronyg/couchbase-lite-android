@@ -1,9 +1,3 @@
-[submodule "CouchbaseLiteProject/CBLiteJavascript"]
-	path = CouchbaseLiteProject/CBLiteJavascript
-	url = https://github.com/couchbase/couchbase-lite-android-javascript.git
-[submodule "CouchbaseLiteProject/CBLiteListener"]
-	path = CouchbaseLiteProject/CBLiteListener
-	url = https://github.com/couchbase/couchbase-lite-android-listener.git
-[submodule "CouchbaseLiteProject/CBLite"]
-	path = CouchbaseLiteProject/CBLite
-	url = https://github.com/couchbase/couchbase-lite-android-core.git
+[submodule "libraries/couchbase-lite-java-core"]
+	path = libraries/couchbase-lite-java-core
+	url = https://github.com/couchbase/couchbase-lite-java-core.git
