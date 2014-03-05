@@ -40,8 +40,8 @@ android {
 
 }
 
-// apply from: 'dependencies-archive.gradle'    // <- enable this when building an .aar
-apply from: 'dependencies-test.gradle'       // <- enable this when testing
+apply from: 'dependencies-archive.gradle'    // <- enable this when building an .aar
+//apply from: 'dependencies-test.gradle'       // <- enable this when testing
 
 
 task sourcesJar(type: Jar) {
@@ -80,14 +80,24 @@ task uploadArchivesWrapper(dependsOn: createMavenDirectory) << {
     uploadArchives.execute()
 }
 
+def mavenPath() {
+    artifactory_local == "true" ?
+            'file://' + new File(System.getProperty('user.home'), '.m2/repository').absolutePath :
+            artifactory_contextUrl + "/libs-release-local"
+}
+
 // this will upload, but will not first create a directory (which is needed on some servers)
 uploadArchives {
     repositories {
         mavenDeployer {
-            repository(url: System.getenv("UPLOAD_MAVEN_REPO_URL")) {
-                authentication(userName: System.getenv("UPLOAD_USERNAME"), password: System.getenv("UPLOAD_PASSWORD"))
+//            repository(url: System.getenv("UPLOAD_MAVEN_REPO_URL")) {
+//                authentication(userName: System.getenv("UPLOAD_USERNAME"), password: System.getenv("UPLOAD_PASSWORD"))
+//            }
+            repository(url: mavenPath()) {
+                authentication(userName: "${artifactory_user}", password: "${artifactory_password}")
             }
-            pom.version = System.getenv("UPLOAD_VERSION_CBLITE")
+//            pom.version = System.getenv("UPLOAD_VERSION_CBLITE")
+            pom.version = "${System.properties['UPLOAD_VERSION_CBLITE']}"
             pom.groupId = 'com.couchbase.lite'
             pom.artifactId = 'android'
             pom.project {
