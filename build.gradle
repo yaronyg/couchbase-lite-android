@@ -12,6 +12,7 @@ buildscript {
 
 repositories {
     mavenLocal()
+    maven { url 'http://files.couchbase.com/maven2/' }
     mavenCentral()
 }
 
@@ -61,7 +62,7 @@ dependencies {
 
     compile buildAndroidWithArtifacts == null ?
             project(':libraries:couchbase-lite-java-core') :
-            'com.couchbase.lite:java-core:' + System.getenv("UPLOAD_VERSION_CBLITE")
+            'com.couchbase.lite:java-core:' + System.getProperty("UPLOAD_VERSION_CBLITE")
 
 }
 
