@@ -25,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 public abstract class LiteTestCase extends TestCase {
@@ -297,8 +298,8 @@ public abstract class LiteTestCase extends TestCase {
         }
     };
 
-    static void createDocumentsAsync(final Database db, final int n) {
-        db.runAsync(new AsyncTask() {
+    static Future createDocumentsAsync(final Database db, final int n) {
+        return db.runAsync(new AsyncTask() {
             @Override
             public void run(Database database) {
                 db.beginTransaction();
@@ -326,8 +327,8 @@ public abstract class LiteTestCase extends TestCase {
         Assert.assertNotNull(doc.getCurrentRevisionId());
         Assert.assertNotNull(doc.getUserProperties());
 
-        // this won't work until the weakref hashmap is implemented which stores all docs
-        // Assert.assertEquals(db.getDocument(doc.getId()), doc);
+        // should be same doc instance, since there should only ever be a single Document instance for a given document
+        Assert.assertEquals(db.getDocument(doc.getId()), doc);
 
         Assert.assertEquals(db.getDocument(doc.getId()).getId(), doc.getId());
 
@@ -414,10 +415,15 @@ public abstract class LiteTestCase extends TestCase {
         public void changed(Replication.ChangeEvent event) {
             Replication replicator = event.getSource();
             Log.d(TAG, replicator + " changed.  " + replicator.getCompletedChangesCount() + " / " + replicator.getChangesCount());
-            Assert.assertTrue(replicator.getCompletedChangesCount() <= replicator.getChangesCount());
-            if (replicator.getCompletedChangesCount() > replicator.getChangesCount()) {
-                throw new RuntimeException("replicator.getCompletedChangesCount() > replicator.getChangesCount()");
+
+            if (!replicator.isRunning()) {
+                if (replicator.getCompletedChangesCount() > replicator.getChangesCount()) {
+                    String msg = String.format("replicator.getCompletedChangesCount() - %d > replicator.getChangesCount() - %d", replicator.getCompletedChangesCount(), replicator.getChangesCount());
+                    Log.d(TAG, msg);
+                    throw new RuntimeException(msg);
+                }
             }
+
             if (!replicator.isRunning()) {
                 replicationFinished = true;
                 String msg = String.format("ReplicationFinishedObserver.changed called, set replicationFinished to: %b", replicationFinished);
