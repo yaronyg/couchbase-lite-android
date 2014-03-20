@@ -9,6 +9,7 @@ import com.couchbase.lite.LiteTestCase;
 import com.couchbase.lite.LiveQuery;
 import com.couchbase.lite.Manager;
 import com.couchbase.lite.Mapper;
+import com.couchbase.lite.RevisionList;
 import com.couchbase.lite.SavedRevision;
 import com.couchbase.lite.Status;
 import com.couchbase.lite.UnsavedRevision;
@@ -16,6 +17,8 @@ import com.couchbase.lite.View;
 import com.couchbase.lite.auth.FacebookAuthorizer;
 import com.couchbase.lite.internal.Body;
 import com.couchbase.lite.internal.RevisionInternal;
+import com.couchbase.lite.storage.Cursor;
+import com.couchbase.lite.storage.SQLException;
 import com.couchbase.lite.support.Base64;
 import com.couchbase.lite.support.HttpClientFactory;
 import com.couchbase.lite.threading.BackgroundTask;
@@ -259,6 +262,11 @@ public class ReplicationTest extends LiteTestCase {
 
         runReplication(repl);
 
+        // since we pushed two documents, should expect the changes count to be >= 2
+        assertTrue(repl.getChangesCount() >= 2);
+        assertTrue(repl.getCompletedChangesCount() >= 2);
+        assertNull(repl.getLastError());
+
         // make sure doc1 is there
         verifyRemoteDocExists(remote, doc1Id);
 
@@ -275,45 +283,67 @@ public class ReplicationTest extends LiteTestCase {
         if (!isSyncGateway(remote)) {
             repl2.setCreateTarget(true);
         }
+        String repl2CheckpointId = repl2.remoteCheckpointDocID();
         runReplication(repl2);
+        assertNull(repl2.getLastError());
+
 
         // make sure the doc has been added
         verifyRemoteDocExists(remote, doc3Id);
+
+        // verify sequence stored in local db has been updated
+        boolean isPush = true;
+        assertEquals(repl2.getLastSequence(), database.getLastSequenceStored(repl2CheckpointId, isPush));
+
+        // wait a few seconds in case reqeust to server to update checkpoint still in flight
+        Thread.sleep(2000);
+
+        // verify that the _local doc remote checkpoint has been updated and it matches
+        String pathToCheckpointDoc = String.format("%s/_local/%s", remote.toExternalForm(), repl2CheckpointId);
+        HttpResponse response = getRemoteDoc(new URL(pathToCheckpointDoc));
+        Map<String, Object> json = extractJsonFromResponse(response);
+        String remoteLastSequence = (String) json.get("lastSequence");
+        assertEquals(repl2.getLastSequence(), remoteLastSequence);
 
         Log.d(TAG, "testPusher() finished");
 
     }
 
+    private Map<String, Object> extractJsonFromResponse(HttpResponse response) throws IOException{
+        InputStream is =  response.getEntity().getContent();
+        return Manager.getObjectMapper().readValue(is, Map.class);
+    }
+
     private String createDocumentsForPushReplication(String docIdTimestamp) throws CouchbaseLiteException {
         String doc1Id;
         String doc2Id;// Create some documents:
-        Map<String, Object> documentProperties = new HashMap<String, Object>();
+        Map<String, Object> doc1Properties = new HashMap<String, Object>();
         doc1Id = String.format("doc1-%s", docIdTimestamp);
-        documentProperties.put("_id", doc1Id);
-        documentProperties.put("foo", 1);
-        documentProperties.put("bar", false);
+        doc1Properties.put("_id", doc1Id);
+        doc1Properties.put("foo", 1);
+        doc1Properties.put("bar", false);
 
-        Body body = new Body(documentProperties);
+        Body body = new Body(doc1Properties);
         RevisionInternal rev1 = new RevisionInternal(body, database);
 
         Status status = new Status();
         rev1 = database.putRevision(rev1, null, false, status);
         assertEquals(Status.CREATED, status.getCode());
 
-        documentProperties.put("_rev", rev1.getRevId());
-        documentProperties.put("UPDATED", true);
+        doc1Properties.put("_rev", rev1.getRevId());
+        doc1Properties.put("UPDATED", true);
 
         @SuppressWarnings("unused")
-        RevisionInternal rev2 = database.putRevision(new RevisionInternal(documentProperties, database), rev1.getRevId(), false, status);
+        RevisionInternal rev2 = database.putRevision(new RevisionInternal(doc1Properties, database), rev1.getRevId(), false, status);
         assertEquals(Status.CREATED, status.getCode());
 
-        documentProperties = new HashMap<String, Object>();
+        Map<String, Object> doc2Properties = new HashMap<String, Object>();
         doc2Id = String.format("doc2-%s", docIdTimestamp);
-        documentProperties.put("_id", doc2Id);
-        documentProperties.put("baz", 666);
-        documentProperties.put("fnord", true);
+        doc2Properties.put("_id", doc2Id);
+        doc2Properties.put("baz", 666);
+        doc2Properties.put("fnord", true);
 
-        database.putRevision(new RevisionInternal(documentProperties, database), null, false, status);
+        database.putRevision(new RevisionInternal(doc2Properties, database), null, false, status);
         assertEquals(Status.CREATED, status.getCode());
 
         Document doc2 = database.getDocument(doc2Id);
@@ -330,6 +360,29 @@ public class ReplicationTest extends LiteTestCase {
         return (remote.getPort() == 4984 || remote.getPort() == 4984);
     }
 
+    private HttpResponse getRemoteDoc(URL pathToDoc) throws MalformedURLException, IOException {
+
+        HttpClient httpclient = new DefaultHttpClient();
+
+        HttpResponse response = null;
+        String responseString = null;
+        response = httpclient.execute(new HttpGet(pathToDoc.toExternalForm()));
+        StatusLine statusLine = response.getStatusLine();
+        if (statusLine.getStatusCode() != HttpStatus.SC_OK) {
+            throw new RuntimeException("Did not get 200 status doing GET to URL: " + pathToDoc);
+        }
+        return response;
+
+    }
+
+    /**
+     * TODO: 1. refactor to use getRemoteDoc
+     * TODO: 2. can just make synchronous http call, no need for background task
+     *
+     * @param remote
+     * @param doc1Id
+     * @throws MalformedURLException
+     */
     private void verifyRemoteDocExists(URL remote, final String doc1Id) throws MalformedURLException {
         URL replicationUrlTrailing = new URL(String.format("%s/", remote.toExternalForm()));
         final URL pathToDoc = new URL(replicationUrlTrailing, doc1Id);
@@ -407,6 +460,7 @@ public class ReplicationTest extends LiteTestCase {
         manager.setDefaultHttpClientFactory(mockHttpClientFactory);
         Replication pusher = database.createPushReplication(remote);
         runReplication(pusher);
+        assertNull(pusher.getLastError());
 
         int numDocsSent = 0;
 
@@ -460,9 +514,12 @@ public class ReplicationTest extends LiteTestCase {
         assertTrue(status.getCode() >= 200 && status.getCode() < 300);
 
         final Replication repl = database.createPushReplication(remote);
-        ((Pusher)repl).setCreateTarget(true);
+        if (!isSyncGateway(remote)) {
+            repl.setCreateTarget(true);
+        }
 
         runReplication(repl);
+        assertNull(repl.getLastError());
 
 
         // make sure doc1 is deleted
@@ -658,6 +715,7 @@ public class ReplicationTest extends LiteTestCase {
 
         Log.d(TAG, "Doing pull replication with: " + repl);
         runReplication(repl);
+        assertNull(repl.getLastError());
         Log.d(TAG, "Finished pull replication with: " + repl);
 
 
@@ -987,6 +1045,7 @@ public class ReplicationTest extends LiteTestCase {
         puller.setHeaders(headers);
 
         runReplication(puller);
+        assertNotNull(puller.getLastError());
 
         boolean foundFooHeader = false;
         List<HttpRequest> requests = mockHttpClient.getCapturedRequests();
@@ -1034,6 +1093,7 @@ public class ReplicationTest extends LiteTestCase {
         // sync with remote DB -- should push both leaf revisions
         Replication push = database.createPushReplication(getReplicationURL());
         runReplication(push);
+        assertNull(push.getLastError());
 
         // find the _revs_diff captured request and decode into json
         boolean foundRevsDiff = false;
@@ -1072,6 +1132,7 @@ public class ReplicationTest extends LiteTestCase {
         // Push the conflicts to the remote DB.
         Replication push = database.createPushReplication(getReplicationURL());
         runReplication(push);
+        assertNull(push.getLastError());
 
         // Prepare a bulk docs request to resolve the conflict remotely. First, advance rev 2a.
         JSONObject rev3aBody = new JSONObject();
@@ -1109,6 +1170,7 @@ public class ReplicationTest extends LiteTestCase {
         // Pull the remote changes.
         Replication pull = database.createPullReplication(getReplicationURL());
         runReplication(pull);
+        assertNull(pull.getLastError());
 
         // Make sure the conflict was resolved locally.
         assertEquals(1, doc.getConflictingRevisions().size());
