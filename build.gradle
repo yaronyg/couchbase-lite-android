@@ -57,7 +57,7 @@ dependencies {
 
     compile buildAndroidWithArtifacts == null ?
             project(':libraries:couchbase-lite-java-core') :
-            'com.couchbase.lite:java-core:' + System.getProperty("UPLOAD_VERSION_CBLITE")
+            'com.couchbase.lite:java-core:' + System.getProperty("UPLOAD_VERSION_CBLITE") // https://github.com/couchbase/couchbase-lite-android/issues/238
 
 }
 
@@ -93,7 +93,7 @@ task uploadArchivesWrapper(dependsOn: createMavenDirectory) << {
     uploadArchives.execute()
 }
 
-def mavenPath() {
+def mavenPath() {  // https://github.com/couchbase/couchbase-lite-android/issues/239
     artifactory_local == "true" ?
             'file://' + new File(System.getProperty('user.home'), '.m2/repository').absolutePath :
             artifactory_contextUrl + "/libs-release-local"
@@ -106,11 +106,11 @@ uploadArchives {
 //            repository(url: System.getenv("UPLOAD_MAVEN_REPO_URL")) {
 //                authentication(userName: System.getenv("UPLOAD_USERNAME"), password: System.getenv("UPLOAD_PASSWORD"))
 //            }
-            repository(url: mavenPath()) {
+            repository(url: mavenPath()) {  // https://github.com/couchbase/couchbase-lite-android/issues/239
                 authentication(userName: "${artifactory_user}", password: "${artifactory_password}")
             }
 //            pom.version = System.getenv("UPLOAD_VERSION_CBLITE")
-            pom.version = "${System.properties['UPLOAD_VERSION_CBLITE']}"
+            pom.version = "${System.properties['UPLOAD_VERSION_CBLITE']}"  // https://github.com/couchbase/couchbase-lite-android/issues/238
             pom.groupId = 'com.couchbase.lite'
             pom.artifactId = 'android'
             pom.project {
