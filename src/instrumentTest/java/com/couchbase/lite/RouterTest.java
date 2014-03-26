@@ -474,9 +474,59 @@ public class RouterTest extends LiteTestCase {
         assertEquals(2, bulk_result.size());
         assertEquals(bulk_result.get(0).get("id"),  bulk_doc1.get("_id"));
         assertNotNull(bulk_result.get(0).get("rev"));
-        assertEquals(bulk_result.get(1).get("id"),  bulk_doc2.get("_id"));
+        assertEquals(bulk_result.get(1).get("id"), bulk_doc2.get("_id"));
         assertNotNull(bulk_result.get(1).get("rev"));
     }
+
+
+
+    public void testPostBulkDocsWithConflict() {
+        send("PUT", "/db", Status.CREATED, null);
+
+        Map<String,Object> bulk_doc1 = new HashMap<String,Object>();
+        bulk_doc1.put("_id", "bulk_message1");
+        bulk_doc1.put("baz", "hello");
+
+        Map<String,Object> bulk_doc2 = new HashMap<String,Object>();
+        bulk_doc2.put("_id", "bulk_message2");
+        bulk_doc2.put("baz", "hi");
+
+
+        List<Map<String,Object>> list = new ArrayList<Map<String,Object>>();
+        list.add(bulk_doc1);
+        list.add(bulk_doc2);
+        list.add(bulk_doc2);
+
+        Map<String,Object> bodyObj = new HashMap<String,Object>();
+        bodyObj.put("docs", list);
+
+        List<Map<String,Object>> bulk_result  =
+                (ArrayList<Map<String,Object>>)sendBody("POST", "/db/_bulk_docs", bodyObj, Status.CREATED, null);
+
+        assertEquals(3, bulk_result.size());
+        assertEquals(bulk_result.get(0).get("id"),  bulk_doc1.get("_id"));
+        assertNotNull(bulk_result.get(0).get("rev"));
+        assertEquals(bulk_result.get(1).get("id"),  bulk_doc2.get("_id"));
+        assertNotNull(bulk_result.get(1).get("rev"));
+        assertEquals(2, bulk_result.get(2).size());
+        assertEquals(bulk_result.get(2).get("id"),  bulk_doc2.get("_id"));
+        assertEquals(bulk_result.get(2).get("error"), "conflict");
+
+
+        list = new ArrayList<Map<String,Object>>();
+        list.add(bulk_doc1);
+
+        bodyObj = new HashMap<String,Object>();
+        bodyObj.put("docs", list);
+
+        bulk_result  =  (ArrayList<Map<String,Object>>)sendBody("POST", "/db/_bulk_docs", bodyObj, Status.CREATED, null);
+        //https://github.com/couchbase/couchbase-lite-android/issues/79
+        assertEquals(1, bulk_result.size());
+        assertEquals(2, bulk_result.get(0).size());
+        assertEquals(bulk_result.get(0).get("id"),  bulk_doc1.get("_id"));
+        assertEquals(bulk_result.get(0).get("error"), "conflict");
+    }
+
 
     public void testPostKeysView() throws CouchbaseLiteException {
     	send("PUT", "/db", Status.CREATED, null);
