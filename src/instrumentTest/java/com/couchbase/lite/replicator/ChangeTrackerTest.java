@@ -47,6 +47,7 @@ public class ChangeTrackerTest extends LiteTestCase {
         };
 
         final ChangeTracker changeTracker = new ChangeTracker(testURL, ChangeTracker.ChangeTrackerMode.OneShot, false, 0, client);
+        changeTracker.setUsePOST(isTestingAgainstSyncGateway());
         changeTracker.start();
 
         try {
@@ -89,6 +90,7 @@ public class ChangeTrackerTest extends LiteTestCase {
         };
 
         final ChangeTracker changeTracker = new ChangeTracker(testURL, ChangeTracker.ChangeTrackerMode.Continuous, false, 0, client);
+        changeTracker.setUsePOST(isTestingAgainstSyncGateway());
         changeTracker.start();
 
         try {
@@ -147,6 +149,7 @@ public class ChangeTrackerTest extends LiteTestCase {
         };
 
         final ChangeTracker changeTracker = new ChangeTracker(testURL, mode, false, 0, client);
+        changeTracker.setUsePOST(isTestingAgainstSyncGateway());
         changeTracker.start();
 
         try {
@@ -205,10 +208,18 @@ public class ChangeTrackerTest extends LiteTestCase {
         docIds.add("doc2");
         changeTrackerDocIds.setDocIDs(docIds);
 
-        String docIdsEncoded = URLEncoder.encode("[\"doc1\",\"doc2\"]");
+        String docIdsUnencoded = "[\"doc1\",\"doc2\"]";
+        String docIdsEncoded = URLEncoder.encode(docIdsUnencoded);
         String expectedFeedPath = String.format("_changes?feed=longpoll&limit=50&heartbeat=300000&since=0&filter=_doc_ids&doc_ids=%s", docIdsEncoded);
         final String changesFeedPath = changeTrackerDocIds.getChangesFeedPath();
         assertEquals(expectedFeedPath, changesFeedPath);
+
+        changeTrackerDocIds.setUsePOST(true);
+        Map<String, Object> postBodyMap = changeTrackerDocIds.changesFeedPOSTBodyMap();
+        assertEquals("_doc_ids", postBodyMap.get("filter"));
+        assertEquals(docIds, postBodyMap.get("doc_ids"));
+        String postBody = changeTrackerDocIds.changesFeedPOSTBody();
+        assertTrue(postBody.contains(docIdsUnencoded));
 
     }
 
@@ -252,7 +263,7 @@ public class ChangeTrackerTest extends LiteTestCase {
         };
 
         final ChangeTracker changeTracker = new ChangeTracker(testURL, ChangeTracker.ChangeTrackerMode.LongPoll, false, 0, client);
-
+        changeTracker.setUsePOST(isTestingAgainstSyncGateway());
         changeTracker.start();
 
         // sleep for a few seconds

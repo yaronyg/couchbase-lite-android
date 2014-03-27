@@ -1274,7 +1274,7 @@ public class ReplicationTest extends LiteTestCase {
 
             // wait until we get a bulk docs request
             Log.d(Database.TAG, "waiting for bulk docs request with " + docFieldName);
-            boolean succeeded = gotBulkDocsRequest.await(30, TimeUnit.SECONDS);
+            boolean succeeded = gotBulkDocsRequest.await(90, TimeUnit.SECONDS);
             assertTrue(succeeded);
             Log.d(Database.TAG, "got bulk docs request with " + docFieldName);
             mockHttpClient.removeResponseListener(bulkDocsListener);
@@ -1289,7 +1289,7 @@ public class ReplicationTest extends LiteTestCase {
 
         // wait for replication to finish
         Log.d(Database.TAG, "waiting for replicationDoneSignal");
-        boolean didNotTimeOut = replicationDoneSignal.await(30, TimeUnit.SECONDS);
+        boolean didNotTimeOut = replicationDoneSignal.await(90, TimeUnit.SECONDS);
         Log.d(Database.TAG, "done waiting for replicationDoneSignal.  didNotTimeOut: " + didNotTimeOut);
         assertTrue(didNotTimeOut);
         assertFalse(pusher.isRunning());
@@ -1524,6 +1524,14 @@ public class ReplicationTest extends LiteTestCase {
         Log.d(TAG, "replication done");
 
 
+    }
+
+    public void testServerIsSyncGatewayVersion() {
+        Replication pusher = database.createPushReplication(getReplicationURL());
+        assertFalse(pusher.serverIsSyncGatewayVersion("0.01"));
+        pusher.setServerType("Couchbase Sync Gateway/0.93");
+        assertTrue(pusher.serverIsSyncGatewayVersion("0.92"));
+        assertFalse(pusher.serverIsSyncGatewayVersion("0.94"));
     }
 
     private void putReplicationOffline(Replication replication) throws InterruptedException {
