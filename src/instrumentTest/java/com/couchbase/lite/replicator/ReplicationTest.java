@@ -1576,6 +1576,39 @@ public class ReplicationTest extends LiteTestCase {
 
     }
 
+    /**
+     * https://github.com/couchbase/couchbase-lite-android/issues/243
+     */
+    public void testDifferentCheckpointsFilteredReplication() throws Exception {
+
+        Replication pullerNoFilter = database.createPullReplication(getReplicationURL());
+        String noFilterCheckpointDocId = pullerNoFilter.remoteCheckpointDocID();
+
+        Replication pullerWithFilter1 = database.createPullReplication(getReplicationURL());
+        pullerWithFilter1.setFilter("foo/bar");
+        Map<String, Object> filterParams= new HashMap<String, Object>();
+        filterParams.put("a", "aval");
+        filterParams.put("b", "bval");
+        pullerWithFilter1.setDocIds(Arrays.asList("doc3", "doc1", "doc2"));
+        pullerWithFilter1.setFilterParams(filterParams);
+
+        String withFilterCheckpointDocId = pullerWithFilter1.remoteCheckpointDocID();
+        assertFalse(withFilterCheckpointDocId.equals(noFilterCheckpointDocId));
+
+        Replication pullerWithFilter2 = database.createPullReplication(getReplicationURL());
+        pullerWithFilter2.setFilter("foo/bar");
+        filterParams= new HashMap<String, Object>();
+        filterParams.put("b", "bval");
+        filterParams.put("a", "aval");
+        pullerWithFilter2.setDocIds(Arrays.asList("doc2", "doc3", "doc1"));
+        pullerWithFilter2.setFilterParams(filterParams);
+
+        String withFilterCheckpointDocId2 = pullerWithFilter2.remoteCheckpointDocID();
+        assertTrue(withFilterCheckpointDocId.equals(withFilterCheckpointDocId2));
+
+
+    }
+
 
 
     /**

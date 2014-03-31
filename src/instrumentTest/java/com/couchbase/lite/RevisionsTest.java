@@ -1,6 +1,7 @@
 package com.couchbase.lite;
 
 import com.couchbase.lite.internal.RevisionInternal;
+import com.couchbase.lite.util.Log;
 
 import junit.framework.Assert;
 
@@ -8,6 +9,8 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 public class RevisionsTest extends LiteTestCase {
 
@@ -129,6 +132,57 @@ public class RevisionsTest extends LiteTestCase {
 
         historyDict = Database.makeRevisionHistoryDict(revs);
         Assert.assertEquals(expectedHistoryDict, historyDict);
+
+    }
+
+    public void testResolveConflict() throws Exception {
+
+        // Create a conflict on purpose
+        Document doc = database.createDocument();
+        SavedRevision rev1 = doc.createRevision().save();
+        SavedRevision rev2a = rev1.createRevision().save();
+        SavedRevision rev2b = rev1.createRevision().save(true);
+
+        SavedRevision winningRev = null;
+        SavedRevision losingRev = null;
+        if (doc.getCurrentRevisionId().equals(rev2a.getId())) {
+            winningRev = rev2a;
+            losingRev = rev2b;
+        } else {
+            winningRev = rev2b;
+            losingRev = rev2a;
+        }
+
+        // let's manually choose the losing rev as the winner.  First, delete winner, which will
+        // cause losing rev to be the current revision.
+        SavedRevision deleteRevision = winningRev.deleteDocument();
+
+        assertEquals(3, deleteRevision.getGeneration());
+        assertEquals(losingRev.getId(), doc.getCurrentRevision().getId());
+
+        // Finally create a new revision rev3 based on losing rev
+        SavedRevision rev3 = losingRev.createRevision().save(true);
+
+        assertEquals(rev3.getId(), doc.getCurrentRevisionId());
+    }
+
+    public void testDocumentChangeListener() throws Exception {
+
+        Document doc = database.createDocument();
+        final CountDownLatch documentChanged = new CountDownLatch(1);
+        doc.addChangeListener(new Document.ChangeListener() {
+            @Override
+            public void changed(Document.ChangeEvent event) {
+                DocumentChange docChange = event.getChange();
+                String msg = "New revision added: %s.  Conflict: %s";
+                msg = String.format(msg, docChange.getAddedRevision(), docChange.isConflict());
+                Log.d(TAG, msg);
+                documentChanged.countDown();
+            }
+        });
+        doc.createRevision().save();
+        boolean success = documentChanged.await(30, TimeUnit.SECONDS);
+        assertTrue(success);
 
     }
 
