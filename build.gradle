@@ -4,6 +4,7 @@ apply plugin: 'maven'
 buildscript {
     repositories {
         mavenCentral()
+        // mavenLocal() https://github.com/couchbase/couchbase-lite-android/issues/280
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:0.9.+' // https://github.com/couchbase/couchbase-lite-android/issues/245
@@ -11,7 +12,7 @@ buildscript {
 }
 
 repositories {
-    mavenLocal()
+    mavenLocal() // Prevented from being deleted due to https://github.com/couchbase/couchbase-lite-android/issues/280
     maven { url 'http://files.couchbase.com/maven2/' }
     mavenCentral()
 }
@@ -42,11 +43,13 @@ android {
         exclude 'META-INF/NOTICE'
     }
 
-    // https://github.com/couchbase/couchbase-lite-android/issues/245
     sourceSets {
-        androidTest.setRoot('instrumentTest')
+        main {
+            jni.srcDirs = []
+            jniLibs.srcDir file('jniLibs')
+	        androidTest.setRoot('instrumentTest') // https://github.com/couchbase/couchbase-lite-android/issues/245
+        }
     }
-
 }
 
 def buildAndroidWithArtifacts = System.getProperty("buildAndroidWithArtifacts")
@@ -57,15 +60,9 @@ dependencies {
     // instrumentTestCompile is used rather than compile.
     androidTestCompile 'commons-io:commons-io:2.0.1' // https://github.com/couchbase/couchbase-lite-android/issues/245
 
-    // as discovered by trial and error, the build will fail if "compile" is
-    // used: Error: duplicate files during packaging of APK.  I guess it is
-    // being implicitly included by being in the libs folder, and then "double included"
-    // because of a "compile" directive to explicitly include the jar.
-    androidTestCompile fileTree(dir: 'libs', include: 'td_collator_so.jar') // https://github.com/couchbase/couchbase-lite-android/issues/245
-
     compile buildAndroidWithArtifacts == null ?
             project(':libraries:couchbase-lite-java-core') :
-            'com.couchbase.lite:java-core:' + System.getProperty("UPLOAD_VERSION_CBLITE") // https://github.com/couchbase/couchbase-lite-android/issues/238
+            'com.couchbase.lite:java-core:' + System.getProperty("MAVEN_UPLOAD_VERSION") // https://github.com/couchbase/couchbase-lite-android/issues/238
 
 }
 
@@ -87,14 +84,14 @@ task wrapper(type: Wrapper) {
 task createMavenDirectory(type: Exec) {
 
     ext {
-        uploadUser = System.getenv("UPLOAD_USERNAME") + ":" + System.getenv("UPLOAD_PASSWORD")
-        mkcolPath = System.getenv("UPLOAD_MAVEN_REPO_URL") + "com/couchbase/lite/android/" + System.getenv("UPLOAD_VERSION_CBLITE") + "/"
+        uploadUser = System.getenv("MAVEN_UPLOAD_USERNAME") + ":" + System.getenv("MAVEN_UPLOAD_PASSWORD")
+        mkcolPath  = System.getenv("MAVEN_UPLOAD_REPO_URL") + "com/couchbase/lite/android/" + System.getenv("MAVEN_UPLOAD_VERSION") + "/"
     }
     commandLine "curl", "--user", uploadUser, "-X", "MKCOL", mkcolPath
 }
 
 // this hack is only needed for apache mod_dav based Maven repo's like file.couchbase.com.  otherwise, skip it
-createMavenDirectory.onlyIf { System.getenv("UPLOAD_MAVEN_REPO_URL").contains("files") }
+createMavenDirectory.onlyIf { System.getenv("MAVEN_UPLOAD_REPO_URL").contains("files") }
 
 // first create the directory, then do the upload
 task uploadArchivesWrapper(dependsOn: createMavenDirectory) << {
@@ -111,14 +108,13 @@ def mavenPath() {  // https://github.com/couchbase/couchbase-lite-android/issues
 uploadArchives {
     repositories {
         mavenDeployer {
-//            repository(url: System.getenv("UPLOAD_MAVEN_REPO_URL")) {
-//                authentication(userName: System.getenv("UPLOAD_USERNAME"), password: System.getenv("UPLOAD_PASSWORD"))
-//            }
             repository(url: mavenPath()) {  // https://github.com/couchbase/couchbase-lite-android/issues/239
                 authentication(userName: "${artifactory_user}", password: "${artifactory_password}")
+            //repository(url: System.getenv("MAVEN_UPLOAD_REPO_URL")) {
+            //    authentication(userName: System.getenv("MAVEN_UPLOAD_USERNAME"), password: System.getenv("MAVEN_UPLOAD_PASSWORD"))
             }
-//            pom.version = System.getenv("UPLOAD_VERSION_CBLITE")
-            pom.version = "${System.properties['UPLOAD_VERSION_CBLITE']}"  // https://github.com/couchbase/couchbase-lite-android/issues/238
+            pom.version = "${System.properties['MAVEN_UPLOAD_VERSION']}"  // https://github.com/couchbase/couchbase-lite-android/issues/238
+            //pom.version = System.getenv("MAVEN_UPLOAD_VERSION")
             pom.groupId = 'com.couchbase.lite'
             pom.artifactId = 'android'
             pom.project {

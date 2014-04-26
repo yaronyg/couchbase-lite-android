@@ -5,6 +5,7 @@ import com.couchbase.lite.replicator.Replication;
 import com.couchbase.lite.support.FileDirUtils;
 
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -31,7 +32,7 @@ public class DatabaseTest extends LiteTestCase {
         }
 
         int numPruned = database.pruneRevsToMaxDepth(1);
-        assertEquals(9, numPruned);
+        assertEquals(10, numPruned);
 
         Document fetchedDoc = database.getDocument(doc.getId());
         List<SavedRevision> revisions = fetchedDoc.getRevisionHistory();
@@ -162,6 +163,53 @@ public class DatabaseTest extends LiteTestCase {
         RevisionInternal revisionInternal = new RevisionInternal(props, database);
         byte[] encoded = database.encodeDocumentJSON(revisionInternal);
         assertNotNull(encoded);
+    }
+
+    public void testWinningRevIDOfDoc() throws Exception {
+
+        Map<String, Object> properties = new HashMap<String, Object>();
+        properties.put("testName", "testCreateRevisions");
+        properties.put("tag", 1337);
+
+        Map<String, Object> properties2a = new HashMap<String, Object>();
+        properties2a.put("testName", "testCreateRevisions");
+        properties2a.put("tag", 1338);
+
+        Map<String, Object> properties2b = new HashMap<String, Object>();
+        properties2b.put("testName", "testCreateRevisions");
+        properties2b.put("tag", 1339);
+
+        List<Boolean> outIsDeleted = new ArrayList<Boolean>();
+        List<Boolean> outIsConflict = new ArrayList<Boolean>();
+
+        // Create a conflict on purpose
+        Document doc = database.createDocument();
+        UnsavedRevision newRev1 = doc.createRevision();
+        newRev1.setUserProperties(properties);
+        SavedRevision rev1 = newRev1.save();
+
+        long docNumericId = database.getDocNumericID(doc.getId());
+        assertTrue(docNumericId != 0);
+        assertEquals(rev1.getId(), database.winningRevIDOfDoc(docNumericId, outIsDeleted, outIsConflict));
+        assertTrue(outIsConflict.size() == 0);
+
+        outIsDeleted = new ArrayList<Boolean>();
+        outIsConflict = new ArrayList<Boolean>();
+        UnsavedRevision newRev2a = rev1.createRevision();
+        newRev2a.setUserProperties(properties2a);
+        SavedRevision rev2a = newRev2a.save();
+        assertEquals(rev2a.getId(), database.winningRevIDOfDoc(docNumericId, outIsDeleted, outIsConflict));
+        assertTrue(outIsConflict.size() == 0);
+
+        outIsDeleted = new ArrayList<Boolean>();
+        outIsConflict = new ArrayList<Boolean>();
+        UnsavedRevision newRev2b = rev1.createRevision();
+        newRev2b.setUserProperties(properties2b);
+        SavedRevision rev2b = newRev2b.save(true);
+        database.winningRevIDOfDoc(docNumericId, outIsDeleted, outIsConflict);
+
+        assertTrue(outIsConflict.size() > 0);
+
     }
 
 

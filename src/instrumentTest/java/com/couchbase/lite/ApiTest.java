@@ -1,16 +1,13 @@
 package com.couchbase.lite;
 
-import android.content.res.Resources;
-
 import com.couchbase.lite.util.Log;
+import com.couchbase.lite.util.TextUtils;
 
 import junit.framework.Assert;
 
-import org.apache.commons.io.IOUtils;
-
-import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -84,7 +81,6 @@ public class ApiTest extends LiteTestCase {
         assertTrue(deleteme.exists());
         String dbPath =deleteme.getPath();
         assertTrue(new File(dbPath).exists());
-        assertTrue(new File(dbPath + "-journal").exists());
         assertTrue(new File(dbPath.substring(0, dbPath.lastIndexOf('.'))).exists());
         deleteme.delete();
         assertFalse(deleteme.exists());
@@ -157,7 +153,7 @@ public class ApiTest extends LiteTestCase {
 
         Database db = startDatabase();
         Document doc=createDocumentWithProperties(db, properties);
-
+        assertFalse(doc.isDeleted());
         SavedRevision rev1 = doc.getCurrentRevision();
         assertTrue(rev1.getId().startsWith("1-"));
         assertEquals(1, rev1.getSequence());
@@ -172,7 +168,6 @@ public class ApiTest extends LiteTestCase {
 
         assertTrue("Document revision ID is still " + doc.getCurrentRevisionId(), doc.getCurrentRevisionId().startsWith("2-"));
 
-
         assertEquals(rev2.getId(), doc.getCurrentRevisionId());
         assertNotNull(rev2.arePropertiesAvailable());
         assertEquals(rev2.getUserProperties(), properties2);
@@ -185,6 +180,8 @@ public class ApiTest extends LiteTestCase {
         assertNull(newRev.getId());
         assertEquals(newRev.getParent(), rev2);
         assertEquals(newRev.getParentId(), rev2.getId());
+        assertEquals(doc.getCurrentRevision(), rev2);
+        assertFalse(doc.isDeleted());
         List<SavedRevision> listRevs=new ArrayList<SavedRevision>();
         listRevs.add(rev1);
         listRevs.add(rev2);
@@ -278,12 +275,15 @@ public class ApiTest extends LiteTestCase {
         newRev.setIsDeletion(true);
         SavedRevision rev3 = newRev.save();
         assertNotNull("Save 3 failed", rev3);
-        assertEquals(doc.getCurrentRevision(), rev3);
         assertNotNull("Unexpected revID " + rev3.getId(), rev3.getId().startsWith("3-"));
         assertEquals(3, rev3.getSequence());
         assertTrue(rev3.isDeletion());
 
         assertTrue(doc.isDeleted());
+        assertNull(doc.getCurrentRevision());
+        List<SavedRevision> leafRevs = new ArrayList<SavedRevision>();
+        leafRevs.add(rev3);
+        assertEquals(doc.getLeafRevisions(), leafRevs);
         db.getDocumentCount();
         Document doc2 = db.getDocument(doc.getId());
         assertEquals(doc, doc2);
@@ -306,7 +306,7 @@ public class ApiTest extends LiteTestCase {
         assertTrue(!doc.getCurrentRevision().isDeletion());
         assertTrue(doc.delete());
         assertTrue(doc.isDeleted());
-        assertNotNull(doc.getCurrentRevision().isDeletion());
+        assertNull(doc.getCurrentRevision());
     }
 
 
@@ -321,6 +321,26 @@ public class ApiTest extends LiteTestCase {
 
         Document redoc = db.getCachedDocument(doc.getId());
         assertNull(redoc);
+
+    }
+
+    public void testDeleteDocumentViaTombstoneRevision() throws Exception{
+        Map<String,Object> properties = new HashMap<String, Object>();
+        properties.put("testName", "testDeleteDocument");
+
+        Database db = startDatabase();
+        Document doc=createDocumentWithProperties(db, properties);
+        assertTrue(!doc.isDeleted());
+        assertTrue(!doc.getCurrentRevision().isDeletion());
+
+
+        Map<String, Object> props = new HashMap<String, Object>(doc.getProperties());
+        props.put("_deleted", true);
+        SavedRevision deletedRevision = doc.putProperties(props);
+
+        assertTrue(doc.isDeleted());
+        assertTrue(deletedRevision.isDeletion());
+        assertNull(doc.getCurrentRevision());
 
     }
 
@@ -533,46 +553,47 @@ public class ApiTest extends LiteTestCase {
     //ATTACHMENTS
 
     public void testAttachments() throws Exception, IOException {
-        Map<String,Object> properties = new HashMap<String, Object>();
-        properties.put("testName", "testAttachments");
 
-        Database db = startDatabase();
-
-        Document doc = createDocumentWithProperties(db, properties);
-        SavedRevision rev = doc.getCurrentRevision();
-
-        assertEquals(rev.getAttachments().size(), 0);
-        assertEquals(rev.getAttachmentNames().size(), 0);
-        assertNull(rev.getAttachment("index.html"));
-
+        String attachmentName = "index.html";
         String content  = "This is a test attachment!";
-        ByteArrayInputStream body = new ByteArrayInputStream(content.getBytes());
 
-        UnsavedRevision rev2 = doc.createRevision();
-        rev2.setAttachment("index.html", "text/plain; charset=utf-8", body);
+        Document doc = createDocWithAttachment(database, attachmentName, content);
 
-        SavedRevision rev3 = rev2.save();
-        assertNotNull(rev3);
-        assertEquals(rev3.getAttachments().size(), 1);
-        assertEquals(rev3.getAttachmentNames().size(), 1);
-
-        Attachment attach = rev3.getAttachment("index.html");
-        assertNotNull(attach);
-        assertEquals(doc, attach.getDocument());
-        assertEquals("index.html", attach.getName());
-        List<String> attNames = new ArrayList<String>();
-        attNames.add("index.html");
-        assertEquals(rev3.getAttachmentNames(), attNames);
-
-        assertEquals("text/plain; charset=utf-8", attach.getContentType());
-        assertEquals(IOUtils.toString(attach.getContent(), "UTF-8"), content);
-        assertEquals(content.getBytes().length, attach.getLength());
-
-        UnsavedRevision newRev = rev3.createRevision();
-        newRev.removeAttachment(attach.getName());
+        UnsavedRevision newRev = doc.getCurrentRevision().createRevision();
+        newRev.removeAttachment(attachmentName);
         SavedRevision rev4 = newRev.save();
         assertNotNull(rev4);
         assertEquals(0, rev4.getAttachmentNames().size());
+
+    }
+
+
+    /**
+     * https://github.com/couchbase/couchbase-lite-java-core/issues/132
+     */
+    public void testUpdateDocWithAttachments() throws Exception, IOException {
+
+        String attachmentName = "index.html";
+        String content  = "This is a test attachment!";
+
+        Document doc = createDocWithAttachment(database, attachmentName, content);
+        SavedRevision latestRevision = doc.getCurrentRevision();
+
+        Map<String,Object> propertiesUpdated = new HashMap<String, Object>();
+        propertiesUpdated.put("propertiesUpdated", "testUpdateDocWithAttachments");
+        UnsavedRevision newUnsavedRevision = latestRevision.createRevision();
+        newUnsavedRevision.setUserProperties(propertiesUpdated);
+        SavedRevision newSavedRevision = newUnsavedRevision.save();
+        assertNotNull(newSavedRevision);
+        assertEquals(1, newSavedRevision.getAttachmentNames().size());
+
+        Attachment fetched = doc.getCurrentRevision().getAttachment(attachmentName);
+        InputStream is = fetched.getContent();
+        byte[] attachmentBytes = TextUtils.read(is);
+        assertEquals(content, new String(attachmentBytes));
+        assertNotNull(fetched);
+
+
 
     }
 
@@ -699,7 +720,7 @@ public class ApiTest extends LiteTestCase {
             @Override
             public void map(Map<String, Object> document, Emitter emitter) {
 
-                emitter.emit(document.get("sequence"), new Object[]{"_id" , document.get("prev") });
+                emitter.emit(document.get("sequence"), new Object[]{"_id", document.get("prev")});
 
             }
         });
@@ -1056,7 +1077,7 @@ public class ApiTest extends LiteTestCase {
     /**
      * https://github.com/couchbase/couchbase-lite-android/issues/220
      */
-    public void failingestMultiDocumentUpdateInTransaction() throws Exception {
+    public void failingTestMultiDocumentUpdateInTransaction() throws Exception {
 
         final int numberOfDocuments = 10;
         final int numberOfUpdates = 10;

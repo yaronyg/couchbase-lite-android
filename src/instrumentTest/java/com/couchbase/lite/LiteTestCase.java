@@ -6,11 +6,13 @@ import com.couchbase.lite.internal.Body;
 import com.couchbase.lite.replicator.Replication;
 import com.couchbase.lite.router.*;
 import com.couchbase.lite.router.Router;
+import com.couchbase.lite.storage.Cursor;
 import com.couchbase.lite.support.FileDirUtils;
 import com.couchbase.lite.util.Log;
 
 import junit.framework.Assert;
 
+import org.apache.commons.io.IOUtils;
 import org.codehaus.jackson.map.ObjectMapper;
 import org.codehaus.jackson.type.TypeReference;
 
@@ -20,10 +22,12 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
@@ -67,6 +71,17 @@ public abstract class LiteTestCase extends TestCase {
         File serverPathFile = new File(serverPath);
         FileDirUtils.deleteRecursive(serverPathFile);
         serverPathFile.mkdir();
+        Manager.enableLogging(Log.TAG, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_SYNC, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_QUERY, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_VIEW, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_CHANGE_TRACKER, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_BLOB_STORE, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_DATABASE, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_LISTENER, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_MULTI_STREAM_WRITER, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_REMOTE_REQUEST, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_ROUTER, Log.VERBOSE);
         manager = new Manager(context, Manager.DEFAULT_OPTIONS);
     }
 
@@ -328,6 +343,44 @@ public abstract class LiteTestCase extends TestCase {
         return doc;
     }
 
+    public static Document createDocWithAttachment(Database database, String attachmentName, String content) throws Exception {
+
+        Map<String,Object> properties = new HashMap<String, Object>();
+        properties.put("foo", "bar");
+
+        Document doc = createDocumentWithProperties(database, properties);
+        SavedRevision rev = doc.getCurrentRevision();
+
+        assertEquals(rev.getAttachments().size(), 0);
+        assertEquals(rev.getAttachmentNames().size(), 0);
+        assertNull(rev.getAttachment(attachmentName));
+
+        ByteArrayInputStream body = new ByteArrayInputStream(content.getBytes());
+
+        UnsavedRevision rev2 = doc.createRevision();
+        rev2.setAttachment(attachmentName, "text/plain; charset=utf-8", body);
+
+        SavedRevision rev3 = rev2.save();
+        assertNotNull(rev3);
+        assertEquals(rev3.getAttachments().size(), 1);
+        assertEquals(rev3.getAttachmentNames().size(), 1);
+
+        Attachment attach = rev3.getAttachment(attachmentName);
+        assertNotNull(attach);
+        assertEquals(doc, attach.getDocument());
+        assertEquals(attachmentName, attach.getName());
+        List<String> attNames = new ArrayList<String>();
+        attNames.add(attachmentName);
+        assertEquals(rev3.getAttachmentNames(), attNames);
+
+        assertEquals("text/plain; charset=utf-8", attach.getContentType());
+        assertEquals(IOUtils.toString(attach.getContent(), "UTF-8"), content);
+        assertEquals(content.getBytes().length, attach.getLength());
+
+        return doc;
+    }
+
+
     public void stopReplication(Replication replication) throws Exception {
 
         CountDownLatch replicationDoneSignal = new CountDownLatch(1);
@@ -535,5 +588,54 @@ public abstract class LiteTestCase extends TestCase {
 
     }
 
+    public void dumpTableMaps() throws Exception {
+        Cursor cursor = database.getDatabase().rawQuery(
+                "SELECT * FROM maps", null);
+        while (cursor.moveToNext()) {
+            int viewId = cursor.getInt(0);
+            int sequence = cursor.getInt(1);
+            byte[] key = cursor.getBlob(2);
+            String keyStr = null;
+            if (key != null) {
+                keyStr = new String(key);
+            }
+            byte[] value = cursor.getBlob(3);
+            String valueStr = null;
+            if (value != null) {
+                valueStr = new String(value);
+            }
+            Log.d(TAG, String.format("Maps row viewId: %s seq: %s, key: %s, val: %s",
+                    viewId, sequence, keyStr, valueStr));
+        }
+    }
+
+    public void dumpTableRevs() throws Exception {
+        Cursor cursor = database.getDatabase().rawQuery(
+                "SELECT * FROM revs", null);
+        while (cursor.moveToNext()) {
+            int sequence = cursor.getInt(0);
+            int doc_id = cursor.getInt(1);
+            byte[] revid = cursor.getBlob(2);
+            String revIdStr = null;
+            if (revid != null) {
+                revIdStr = new String(revid);
+            }
+            int parent = cursor.getInt(3);
+            int current = cursor.getInt(4);
+            int deleted = cursor.getInt(5);
+            Log.d(TAG, String.format("Revs row seq: %s doc_id: %s, revIdStr: %s, parent: %s, current: %s, deleted: %s",
+                    sequence, doc_id, revIdStr, parent, current, deleted));
+
+        }
+
+    }
+
+    public static SavedRevision createRevisionWithRandomProps(SavedRevision createRevFrom, boolean allowConflict) throws Exception {
+        Map<String, Object> properties = new HashMap<String, Object>();
+        properties.put(UUID.randomUUID().toString(), "val");
+        UnsavedRevision unsavedRevision = createRevFrom.createRevision();
+        unsavedRevision.setUserProperties(properties);
+        return unsavedRevision.save(allowConflict);
+    }
 
 }

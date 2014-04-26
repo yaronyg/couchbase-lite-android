@@ -1,10 +1,8 @@
 # Couchbase-Lite-Android #
 
-by Marty Schoch (marty@couchbase.com) + Traun Leyden (tleyden@couchbase.com)
+Couchbase-Lite-Android is a lightweight embedded NoSQL database engine for Android with the built-in ability to sync to Couchbase Server on the backend.  
 
-Couchbase-Lite-Android is a lightweight embedded NoSQL database engine for Android with the built-in ability to sync to Couchbase Server on the backend.  It is the Android port of [Couchbase Lite iOS](https://github.com/couchbase/couchbase-lite-ios).  
-
-**Update**: The project structure recently changed, here is a [mailing list post](https://groups.google.com/forum/#!topic/mobile-couchbase/Zsn8TG5F88o) describing the change, as well as [Project Structure](https://github.com/couchbase/couchbase-lite-android/wiki/Project-structure) wiki page that describes the new project structure.
+It is the Android port of [Couchbase Lite iOS](https://github.com/couchbase/couchbase-lite-ios).  
 
 ## Architecture
 
@@ -16,23 +14,58 @@ Couchbase Lite databases are able to sync with eachother via [Sync Gateway](http
 ## Documentation Overview
 
 * This [README](https://github.com/couchbase/couchbase-lite-android/blob/master/README.md)
-* [Official Documentation](http://docs.couchbase.com/couchbase-lite/cbl-android/) for beta2 release
-* [Javadocs](http://www.couchbase.com/autodocs/couchbase-lite-android-1.0b2/index.html) 
+* [Official Documentation](http://docs.couchbase.com/couchbase-lite/cbl-android/) for [beta2](https://github.com/couchbase/couchbase-lite-android/blob/1.0-beta2) release
+* [Javadocs](http://www.couchbase.com/autodocs/couchbase-lite-android-1.0b2/index.html) for [beta2](https://github.com/couchbase/couchbase-lite-android/blob/1.0-beta2) release
 * [Wiki](https://github.com/couchbase/couchbase-lite-android/wiki)
 
-## Getting Started with Couchbase Lite
+## Getting started with Couchbase Lite
 
-* Download and run the  [Grocery-Sync](https://github.com/couchbaselabs/GrocerySync-Android) demo application
+* Download and run the [GrocerySync](https://github.com/couchbaselabs/GrocerySync-Android) demo application
 
 * Create your own Hello World Couchbase Lite via the [Getting Started](https://github.com/couchbase/couchbase-lite-android/wiki/Getting-Started) guide.
 
-## Developing / Contributing to Couchbase Lite
 
-If you are just building an application with Couchbase Lite, you can skip the rest of this document.  (see [Getting Started with Couchbase Lite](README.md#getting-started-with-couchbase-lite))
+## Getting the pre-built jars / maven artifacts
 
-However, if you need to debug Couchbase Lite Android or otherwise hack on it, these instructions will help you do that.
+### Maven master branch
 
-## Prerequisites
+Maven repo URL: `http://files.couchbase.com/maven2/`
+
+```
+<dependency>
+  <groupId>com.couchbase.lite</groupId>
+  <artifactId>android</artifactId>
+  <version>0.0.0-272</version>
+</dependency>
+```
+
+To get the latest build number (eg, the "272" part of the version above), see [Jenkins CI builds](http://factory.couchbase.com/view/build/view/mobile_dev/view/android/job/build_cblite_android_master/)
+
+To see an example gradle configuration, see [GrocerySync's build.gradle file](https://github.com/couchbaselabs/GrocerySync-Android/blob/master/GrocerySync-Android/build.gradle)
+
+### Maven beta2 release
+
+Maven repo URL: `http://files.couchbase.com/maven2/`
+
+```
+<dependency>
+  <groupId>com.couchbase.cblite</groupId>
+  <artifactId>CBLite</artifactId>
+  <version>1.0.0-beta2</version>
+</dependency>
+```
+
+### Zipfile that includes jars
+
+For Eclipse and Phonegap users, here are links to the zip file which includes the jars:
+
+* [Master Branch build #272 zipfile](http://factory.couchbase.com/view/build/view/mobile_dev/view/android/job/build_cblite_android_master/lastSuccessfulBuild/artifact/couchbase-lite-0.0.0-272-android-community.zip) - to get more recent builds, see [Jenkins CI builds](http://factory.couchbase.com/view/build/view/mobile_dev/view/android/job/build_cblite_android_master/)
+* [Beta2 zipfile](http://packages.couchbase.com/releases/couchbase-lite/android/1.0-beta/couchbase-lite-community-android_1.0-beta2.zip)
+
+
+## Building Couchbase Lite from source
+
+### Pre-requisites
 
 * [Download Android Studio](http://developer.android.com/sdk/installing/studio.html) 
 
@@ -40,11 +73,11 @@ However, if you need to debug Couchbase Lite Android or otherwise hack on it, th
 
   * If you are using the master branch of Couchbase Lite, use the latest version in the canary channel (currently Android Studio 0.4.3)
 
-
 * Under Tools / Android / Android SDK Manager and install "Extras/Google Repository" and "Extras/Android Support Repository" (future versions of Android Studio may make this step unnecessary)
 
+**Note** recent versions after Android Studio 0.4.3 are not able to import the project due to [Issue #65915](https://code.google.com/p/android/issues/detail?id=65915), so it's recommended to use Android Studio 0.4.3.
 
-## Clone the repository
+### Clone the git repository
 
 Use Git to clone the Couchbase Lite repository to your local disk: 
 
@@ -54,13 +87,13 @@ cd couchbase-lite-android
 $ git submodule init && git submodule update
 ```
 
-## Configure Android Studio SDK location
+### Configure Android Studio SDK location
 
 * `cp local.properties.example local.properties`
 * Customize `local.properties` according to your SDK installation directory
 
 
-## Importing Project into Android Studio
+### Importing Project into Android Studio
 
 You should be able to import the project directly into Android Studio:
 
@@ -72,7 +105,7 @@ You should be able to import the project directly into Android Studio:
 
 After it's finished with the import, it should look [like this](http://cl.ly/image/3R3X0Q3o1H09)
 
-## Running tests
+### Running tests
 
 There are two wiki pages which describe how to run the tests:
 
@@ -83,17 +116,22 @@ There are two wiki pages which describe how to run the tests:
 ## Example Apps
 
 * [TodoLite](https://github.com/couchbaselabs/ToDoLite-Android)
-* [GrocerySync](https://github.com/couchbaselabs/GrocerySync-Android)
+* [GrocerySync](https://github.com/couchbaselabs/GrocerySync-Android)  
 * [LiteServAndroid](https://github.com/couchbaselabs/couchbase-lite-android-liteserv)
 * [CouchChatAndroid](https://github.com/couchbaselabs/CouchChatAndroid) -- just a stub at this point.
 
-## Utilities
+## Project Structure
 
-* [CBLiteConsole](https://github.com/couchbaselabs/CBLiteConsole)
+* [Project Structure](https://github.com/couchbase/couchbase-lite-android/wiki/Project-structure) wiki page that describes the new project structure.
+* A [mailing list post](https://groups.google.com/forum/#!topic/mobile-couchbase/Zsn8TG5F88o) describing the project structre
 
 ## Requirements
 
 - Android 2.3 Gingerbread (API level 9) and above.
+
+## Credits
+
+[Credits](https://github.com/couchbase/couchbase-lite-android/wiki/Credits)
 
 ## License
 - Apache License 2.0
