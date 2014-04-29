@@ -692,14 +692,14 @@ public class RouterTest extends LiteTestCase {
         boolean success = true;
 
         ArrayList<Object> activeTasks = (ArrayList<Object>)send("GET", "/_active_tasks", Status.OK, null);
-        while (activeTasks.size() > 0 || timeWaited > maxTimeToWaitMs) {
+        while (activeTasks.size() > 0 && timeWaited < maxTimeToWaitMs) { // https://github.com/couchbase/couchbase-lite-android/issues/283
             int timeToWait = 1000;
             Thread.sleep(timeToWait);
             activeTasks = (ArrayList<Object>)send("GET", "/_active_tasks", Status.OK, null);
             timeWaited += timeToWait;
         }
 
-        if (timeWaited > maxTimeToWaitMs) {
+        if (timeWaited >= maxTimeToWaitMs) { // https://github.com/couchbase/couchbase-lite-android/issues/283
             success = false;
         }
         return success;

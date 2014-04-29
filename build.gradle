@@ -47,7 +47,7 @@ android {
         main {
             jni.srcDirs = []
             jniLibs.srcDir file('jniLibs')
-	        androidTest.setRoot('instrumentTest') // https://github.com/couchbase/couchbase-lite-android/issues/245
+	        androidTest.setRoot('src/instrumentTest') // https://github.com/couchbase/couchbase-lite-android/issues/245
         }
     }
 }
@@ -59,6 +59,7 @@ dependencies {
     // this library is only needed by test code (95% certain), and therefore
     // instrumentTestCompile is used rather than compile.
     androidTestCompile 'commons-io:commons-io:2.0.1' // https://github.com/couchbase/couchbase-lite-android/issues/245
+    androidTestCompile 'com.couchbase.lite:java-listener:1.0.0-beta3rc1'
 
     compile buildAndroidWithArtifacts == null ?
             project(':libraries:couchbase-lite-java-core') :

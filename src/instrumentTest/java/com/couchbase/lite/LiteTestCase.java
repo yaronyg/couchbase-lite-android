@@ -1,5 +1,7 @@
 package com.couchbase.lite;
 
+import android.test.AndroidTestCase;
+import com.couchbase.lite.listener.LiteListener;
 import junit.framework.TestCase;
 
 import com.couchbase.lite.internal.Body;
@@ -32,7 +34,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-public abstract class LiteTestCase extends TestCase {
+public abstract class LiteTestCase extends AndroidTestCase { // https://github.com/couchbase/couchbase-lite-android/issues/285
 
     public static final String TAG = "LiteTestCase";
 
@@ -42,6 +44,7 @@ public abstract class LiteTestCase extends TestCase {
 
     protected Manager manager = null;
     protected Database database = null;
+    protected LiteListener testListener = null;
     protected String DEFAULT_TEST_DB = "cblite-test";
 
     @Override
@@ -58,12 +61,12 @@ public abstract class LiteTestCase extends TestCase {
         loadCustomProperties();
         startCBLite();
         startDatabase();
+        startListener();
     }
 
     protected InputStream getAsset(String name) {
         return this.getClass().getResourceAsStream("/assets/" + name);
     }
-
 
     protected void startCBLite() throws IOException {
         LiteTestContext context = new LiteTestContext();
@@ -88,6 +91,23 @@ public abstract class LiteTestCase extends TestCase {
     protected void stopCBLite() {
         if(manager != null) {
             manager.close();
+        }
+    }
+
+    protected void startListener() throws IOException {
+        LiteTestContext context = new LiteTestContext("testlistener");
+        String listenerPath = context.getFilesDir().getAbsolutePath();
+        File listenerFilePath = new File(listenerPath);
+        FileDirUtils.deleteRecursive(listenerFilePath);
+        listenerFilePath.mkdir();
+        Manager manager = new Manager(context, Manager.DEFAULT_OPTIONS);
+        testListener = new LiteListener(manager, getReplicationPort());
+        testListener.start();
+    }
+
+    protected void stopListener() {
+        if (testListener != null) {
+            testListener.stop();
         }
     }
 
@@ -178,6 +198,7 @@ public abstract class LiteTestCase extends TestCase {
         super.tearDown();
         stopDatabse();
         stopCBLite();
+        stopListener();
     }
 
     protected Map<String,Object> userProperties(Map<String,Object> properties) {
