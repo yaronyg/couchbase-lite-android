@@ -94,14 +94,15 @@ public abstract class LiteTestCase extends AndroidTestCase { // https://github.c
         }
     }
 
-    protected void startListener() throws IOException {
+    protected void startListener() throws IOException, CouchbaseLiteException {
         LiteTestContext context = new LiteTestContext("testlistener");
         String listenerPath = context.getFilesDir().getAbsolutePath();
         File listenerFilePath = new File(listenerPath);
         FileDirUtils.deleteRecursive(listenerFilePath);
         listenerFilePath.mkdir();
         Manager manager = new Manager(context, Manager.DEFAULT_OPTIONS);
-        testListener = new LiteListener(manager, getReplicationPort());
+        manager.getDatabase(getReplicationDatabase());
+        testListener = new LiteListener(manager, getReplicationPort(), null);
         testListener.start();
     }
 
