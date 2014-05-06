@@ -240,7 +240,7 @@ public class ReplicationTest extends LiteTestCase {
         unsavedRevision.save();
 
         // but then immediately purge it
-        assertTrue(doc.purge());
+        doc.purge();
 
         // wait for a while to give the replicator a chance to push it
         // (it should not actually push anything)
@@ -1569,13 +1569,14 @@ public class ReplicationTest extends LiteTestCase {
      * https://github.com/couchbase/couchbase-lite-android/issues/66
      */
 
-    public void failingTestPushUpdatedDocWithoutReSendingAttachments() throws Exception {
+    public void testPushUpdatedDocWithoutReSendingAttachments() throws Exception {
 
         assertEquals(0, database.getLastSequenceNumber());
 
         Map<String,Object> properties1 = new HashMap<String,Object>();
         properties1.put("dynamic", 1);
         final Document doc = createDocWithProperties(properties1);
+        SavedRevision doc1Rev = doc.getCurrentRevision();
 
         // Add attachment to document
         UnsavedRevision doc2UnsavedRev = doc.createRevision();
@@ -1588,6 +1589,7 @@ public class ReplicationTest extends LiteTestCase {
 
         mockHttpClient.addResponderFakeLocalDocumentUpdate404();
 
+        // http://url/db/foo (foo==docid)
         mockHttpClient.setResponder(doc.getId(), new CustomizableMockHttpClient.Responder() {
             @Override
             public HttpResponse execute(HttpUriRequest httpUriRequest) throws IOException {
@@ -1599,12 +1601,21 @@ public class ReplicationTest extends LiteTestCase {
             }
         });
 
-
         // create replication and add observer
         manager.setDefaultHttpClientFactory(mockFactoryFactory(mockHttpClient));
         Replication pusher = database.createPushReplication(getReplicationURL());
 
         runReplication(pusher);
+
+        List<HttpRequest> captured = mockHttpClient.getCapturedRequests();
+        for (HttpRequest httpRequest : captured) {
+            // verify that there are no PUT requests with attachments
+            if (httpRequest instanceof HttpPut) {
+                HttpPut httpPut = (HttpPut) httpRequest;
+                HttpEntity entity=httpPut.getEntity();
+                //assertFalse("PUT request with updated doc properties contains attachment", entity instanceof MultipartEntity);
+            }
+        }
 
         mockHttpClient.clearCapturedRequests();
 
@@ -1627,11 +1638,19 @@ public class ReplicationTest extends LiteTestCase {
             }
         });
 
+        final String json = String.format("{\"%s\":{\"missing\":[\"%s\"],\"possible_ancestors\":[\"%s\",\"%s\"]}}",doc.getId(),savedRev.getId(),doc1Rev.getId(), doc2Rev.getId());
+        mockHttpClient.setResponder("_revs_diff", new CustomizableMockHttpClient.Responder() {
+            @Override
+            public HttpResponse execute(HttpUriRequest httpUriRequest) throws IOException {
+                return mockHttpClient.generateHttpResponseObject(json);
+            }
+        });
+
         pusher = database.createPushReplication(getReplicationURL());
         runReplication(pusher);
 
 
-        List<HttpRequest> captured = mockHttpClient.getCapturedRequests();
+        captured = mockHttpClient.getCapturedRequests();
         for (HttpRequest httpRequest : captured) {
             // verify that there are no PUT requests with attachments
             if (httpRequest instanceof HttpPut) {
@@ -1639,10 +1658,80 @@ public class ReplicationTest extends LiteTestCase {
                 HttpEntity entity=httpPut.getEntity();
                 assertFalse("PUT request with updated doc properties contains attachment", entity instanceof MultipartEntity);
             }
-
         }
+    }
 
+    /**
+     * https://github.com/couchbase/couchbase-lite-java-core/issues/188
+     */
+    public void testServerDoesNotSupportMultipart() throws Exception {
 
+        assertEquals(0, database.getLastSequenceNumber());
+
+        Map<String,Object> properties1 = new HashMap<String,Object>();
+        properties1.put("dynamic", 1);
+        final Document doc = createDocWithProperties(properties1);
+        SavedRevision doc1Rev = doc.getCurrentRevision();
+
+        // Add attachment to document
+        UnsavedRevision doc2UnsavedRev = doc.createRevision();
+        InputStream attachmentStream = getAsset("attachment.png");
+        doc2UnsavedRev.setAttachment("attachment.png", "image/png", attachmentStream);
+        SavedRevision doc2Rev = doc2UnsavedRev.save();
+        assertNotNull(doc2Rev);
+
+        final CustomizableMockHttpClient mockHttpClient = new CustomizableMockHttpClient();
+
+        mockHttpClient.addResponderFakeLocalDocumentUpdate404();
+
+        Queue<CustomizableMockHttpClient.Responder> responders = new LinkedList<CustomizableMockHttpClient.Responder>();
+
+        //first http://url/db/foo (foo==docid)
+        //Reject multipart PUT with response code 415
+        responders.add(new CustomizableMockHttpClient.Responder() {
+            @Override
+            public HttpResponse execute(HttpUriRequest httpUriRequest) throws IOException {
+                String json = "{\"error\":\"Unsupported Media Type\",\"reason\":\"missing\"}";
+                return CustomizableMockHttpClient.generateHttpResponseObject(415, "Unsupported Media Type", json);
+            }
+        });
+
+        // second http://url/db/foo (foo==docid)
+        // second call should be plain json, return good response
+        responders.add(new CustomizableMockHttpClient.Responder() {
+            @Override
+            public HttpResponse execute(HttpUriRequest httpUriRequest) throws IOException {
+                Map<String, Object> responseObject = new HashMap<String, Object>();
+                responseObject.put("id", doc.getId());
+                responseObject.put("ok", true);
+                responseObject.put("rev", doc.getCurrentRevisionId());
+                return CustomizableMockHttpClient.generateHttpResponseObject(responseObject);
+            }
+        });
+
+        ResponderChain responderChain = new ResponderChain(responders);
+        mockHttpClient.setResponder(doc.getId(), responderChain);
+
+        // create replication and add observer
+        manager.setDefaultHttpClientFactory(mockFactoryFactory(mockHttpClient));
+        Replication pusher = database.createPushReplication(getReplicationURL());
+
+        runReplication(pusher);
+
+        List<HttpRequest> captured = mockHttpClient.getCapturedRequests();
+        int entityIndex =0;
+        for (HttpRequest httpRequest : captured) {
+            // verify that there are no PUT requests with attachments
+            if (httpRequest instanceof HttpPut) {
+                HttpPut httpPut = (HttpPut) httpRequest;
+                HttpEntity entity=httpPut.getEntity();
+                if(entityIndex++ == 0) {
+                    assertTrue("PUT request with attachment is not multipart", entity instanceof MultipartEntity);
+                } else {
+                    assertFalse("PUT request with attachment is multipart", entity instanceof MultipartEntity);
+                }
+            }
+        }
     }
 
 

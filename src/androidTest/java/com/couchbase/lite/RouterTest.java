@@ -699,7 +699,7 @@ public class RouterTest extends LiteTestCase {
             timeWaited += timeToWait;
         }
 
-        if (timeWaited >= maxTimeToWaitMs) { // https://github.com/couchbase/couchbase-lite-android/issues/283
+        if (timeWaited >= maxTimeToWaitMs) {
             success = false;
         }
         return success;

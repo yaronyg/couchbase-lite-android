@@ -7,7 +7,7 @@ buildscript {
         // mavenLocal() https://github.com/couchbase/couchbase-lite-android/issues/280
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:0.9.+' // https://github.com/couchbase/couchbase-lite-android/issues/245
+        classpath 'com.android.tools.build:gradle:0.9.+'
     }
 }
 
@@ -19,7 +19,7 @@ repositories {
 
 android {
     compileSdkVersion 19
-    buildToolsVersion "19.0.1"
+    buildToolsVersion "19.0.3"
 
     defaultConfig {
         minSdkVersion 9
@@ -27,8 +27,7 @@ android {
         versionCode 1
         versionName "1.0"
     }
-
-    buildTypes { // https://github.com/couchbase/couchbase-lite-android/issues/245
+    buildTypes {
         release {
             runProguard false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
@@ -47,7 +46,6 @@ android {
         main {
             jni.srcDirs = []
             jniLibs.srcDir file('jniLibs')
-	        androidTest.setRoot('src/instrumentTest') // https://github.com/couchbase/couchbase-lite-android/issues/245
         }
     }
 }
@@ -58,8 +56,8 @@ dependencies {
 
     // this library is only needed by test code (95% certain), and therefore
     // instrumentTestCompile is used rather than compile.
-    androidTestCompile 'commons-io:commons-io:2.0.1' // https://github.com/couchbase/couchbase-lite-android/issues/245
-    androidTestCompile 'com.couchbase.lite:java-listener:1.0.0-beta3rc1'
+    androidTestCompile 'com.couchbase.lite:java-listener:1.0.0-beta3rc1' // https://github.com/couchbase/couchbase-lite-android/issues/287
+    androidTestCompile 'commons-io:commons-io:2.0.1'
 
     compile buildAndroidWithArtifacts == null ?
             project(':libraries:couchbase-lite-java-core') :
