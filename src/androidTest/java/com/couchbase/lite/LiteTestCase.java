@@ -1,8 +1,7 @@
 package com.couchbase.lite;
 
-import android.test.AndroidTestCase;
 import com.couchbase.lite.listener.LiteListener;
-import junit.framework.TestCase;
+import com.couchbase.test.lite.*;
 
 import com.couchbase.lite.internal.Body;
 import com.couchbase.lite.replicator.Replication;
@@ -34,17 +33,18 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-public abstract class LiteTestCase extends AndroidTestCase { // https://github.com/couchbase/couchbase-lite-android/issues/285
+public abstract class LiteTestCase extends LiteTestCaseBase { // https://github.com/couchbase/couchbase-lite-android/issues/285
 
     public static final String TAG = "LiteTestCase";
 
     private static boolean initializedUrlHandler = false;
 
+    protected static LiteListener testListener = null;
+
     protected ObjectMapper mapper = new ObjectMapper();
 
     protected Manager manager = null;
     protected Database database = null;
-    protected LiteListener testListener = null;
     protected String DEFAULT_TEST_DB = "cblite-test";
 
     @Override
@@ -61,7 +61,9 @@ public abstract class LiteTestCase extends AndroidTestCase { // https://github.c
         loadCustomProperties();
         startCBLite();
         startDatabase();
-        startListener();
+        if (Boolean.parseBoolean(System.getProperty("LiteListener"))) {
+            startListener();
+        }
     }
 
     protected InputStream getAsset(String name) {
@@ -95,20 +97,17 @@ public abstract class LiteTestCase extends AndroidTestCase { // https://github.c
     }
 
     protected void startListener() throws IOException, CouchbaseLiteException {
-        LiteTestContext context = new LiteTestContext("testlistener");
-        String listenerPath = context.getFilesDir().getAbsolutePath();
-        File listenerFilePath = new File(listenerPath);
-        FileDirUtils.deleteRecursive(listenerFilePath);
-        listenerFilePath.mkdir();
-        Manager manager = new Manager(context, Manager.DEFAULT_OPTIONS);
-        manager.getDatabase(getReplicationDatabase());
-        testListener = new LiteListener(manager, getReplicationPort(), null);
-        testListener.start();
-    }
-
-    protected void stopListener() {
-        if (testListener != null) {
-            testListener.stop();
+        // In theory we only set up the listener once across all tests because this mimics the behavior
+        // of the sync gateway which was the original server these tests are run against which has a single
+        // instance used all the time. But the other reason we only start the listener once is that
+        // there is a bug in TJWS (https://github.com/couchbase/couchbase-lite-java-listener/issues/43) that
+        // keeps the listener from stopping even when you tell it to stop.
+        if (testListener == null) {
+            LiteTestContext context = new LiteTestContext("testlistener");
+            Manager manager = new Manager(context, Manager.DEFAULT_OPTIONS);
+            manager.getDatabase(getReplicationDatabase());
+            testListener = new LiteListener(manager, getReplicationPort(), null);
+            testListener.start();
         }
     }
 
@@ -199,7 +198,6 @@ public abstract class LiteTestCase extends AndroidTestCase { // https://github.c
         super.tearDown();
         stopDatabse();
         stopCBLite();
-        stopListener();
     }
 
     protected Map<String,Object> userProperties(Map<String,Object> properties) {
