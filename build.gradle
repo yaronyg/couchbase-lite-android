@@ -56,13 +56,15 @@ dependencies {
 
     // this library is only needed by test code (95% certain), and therefore
     // instrumentTestCompile is used rather than compile.
-    androidTestCompile 'com.couchbase.lite:java-listener:1.0.0-beta3rc1' // https://github.com/couchbase/couchbase-lite-android/issues/287
     androidTestCompile 'commons-io:commons-io:2.0.1'
 
     compile buildAndroidWithArtifacts == null ?
             project(':libraries:couchbase-lite-java-core') :
             'com.couchbase.lite:java-core:' + System.getProperty("MAVEN_UPLOAD_VERSION") // https://github.com/couchbase/couchbase-lite-android/issues/238
 
+    androidTestCompile buildAndroidWithArtifacts == null ?
+            project(':libraries:couchbase-lite-java-listener') :
+            'com.couchbase.lite:java-listener:' + System.getProperty("MAVEN_UPLOAD_VERSION") // // https://github.com/couchbase/couchbase-lite-android/issues/287
 }
 
 
