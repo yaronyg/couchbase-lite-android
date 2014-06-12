@@ -81,7 +81,9 @@ public class AttachmentsTest extends LiteTestCase {
 
         Attachment attachment = database.getAttachmentForSequence(rev1.getSequence(), testAttachmentName);
         Assert.assertEquals("text/plain", attachment.getContentType());
-        byte[] data = IOUtils.toByteArray(attachment.getContent());
+        InputStream is = attachment.getContent();
+        byte[] data = IOUtils.toByteArray(is);
+        is.close();
         Assert.assertTrue(Arrays.equals(attach1, data));
 
         Map<String,Object> innerDict = new HashMap<String,Object>();
@@ -136,13 +138,17 @@ public class AttachmentsTest extends LiteTestCase {
         Attachment attachment2 = database.getAttachmentForSequence(rev2.getSequence(), testAttachmentName);
 
         Assert.assertEquals("text/plain", attachment2.getContentType());
-        data = IOUtils.toByteArray(attachment2.getContent());
+        InputStream is2 = attachment2.getContent();
+        data = IOUtils.toByteArray(is2);
+        is2.close();
         Assert.assertTrue(Arrays.equals(attach1, data));
 
         // Check the 3rd revision's attachment:
         Attachment attachment3 = database.getAttachmentForSequence(rev3.getSequence(), testAttachmentName);
         Assert.assertEquals("text/html", attachment3.getContentType());
-        data = IOUtils.toByteArray(attachment3.getContent());
+        InputStream is3 = attachment3.getContent();
+        data = IOUtils.toByteArray(is3);
+        is3.close();
         Assert.assertTrue(Arrays.equals(attach2, data));
 
         Map<String,Object> attachmentDictForRev3 = (Map<String,Object>)database.getAttachmentsDictForSequenceWithContent(rev3.getSequence(), EnumSet.noneOf(Database.TDContentOptions.class)).get(testAttachmentName);
@@ -200,7 +206,9 @@ public class AttachmentsTest extends LiteTestCase {
 
         Attachment attachment = database.getAttachmentForSequence(rev1.getSequence(), testAttachmentName);
         Assert.assertEquals("text/plain", attachment.getContentType());
-        byte[] data = IOUtils.toByteArray(attachment.getContent());
+        InputStream is = attachment.getContent();
+        byte[] data = IOUtils.toByteArray(is);
+        is.close();
         Assert.assertTrue(Arrays.equals(attach1, data));
 
         EnumSet<Database.TDContentOptions> contentOptions = EnumSet.of(
@@ -252,6 +260,8 @@ public class AttachmentsTest extends LiteTestCase {
         Assert.assertEquals(attachment.getLength(), rev2FetchedAttachment.getLength());
         Assert.assertEquals(attachment.getMetadata(), rev2FetchedAttachment.getMetadata());
         Assert.assertEquals(attachment.getContentType(), rev2FetchedAttachment.getContentType());
+        // Because of how getAttachmentForSequence works rev2FetchedAttachment has an open stream as a body, we have to close it.
+        rev2FetchedAttachment.getContent().close();
 
         // Add a third revision of the same document:
         Map<String,Object> rev3Properties = new HashMap<String, Object>();
@@ -270,7 +280,9 @@ public class AttachmentsTest extends LiteTestCase {
         // Check the 3rd revision's attachment:
         Attachment rev3FetchedAttachment =  database.getAttachmentForSequence(rev3.getSequence(), testAttachmentName);
 
-        data = IOUtils.toByteArray(rev3FetchedAttachment.getContent());
+        InputStream isRev3 = rev3FetchedAttachment.getContent();
+        data = IOUtils.toByteArray(isRev3);
+        isRev3.close();
         Assert.assertTrue(Arrays.equals(attach3, data));
         Assert.assertEquals("text/html", rev3FetchedAttachment.getContentType());
 
@@ -496,6 +508,7 @@ public class AttachmentsTest extends LiteTestCase {
             InputStream is = attachmentRetrieved.getContent();
             assertNotNull(is);
             byte[] attachmentDataRetrieved = TextUtils.read(is);
+            is.close();
             String attachmentDataRetrievedString = new String(attachmentDataRetrieved);
             String attachBodyString = new String(attachBodyBytes);
             assertEquals(attachBodyString, attachmentDataRetrievedString);
@@ -503,6 +516,41 @@ public class AttachmentsTest extends LiteTestCase {
         }
 
     }
+
+    /**
+     * Regression test for https://github.com/couchbase/couchbase-lite-java-core/issues/218
+     */
+
+    public void failingTestGetAttachmentAfterItDeleted() throws CouchbaseLiteException, IOException {
+
+        // add a doc with an attachment
+        Document doc = database.createDocument();
+        UnsavedRevision rev = doc.createRevision();
+
+        final byte[] attachBodyBytes = "attach body".getBytes();
+        Attachment attachment = new Attachment(
+                new ByteArrayInputStream(attachBodyBytes),
+                "text/plain"
+        );
+
+        String attachmentName = "test_delete_attachment.txt";
+        rev.addAttachment(attachment, attachmentName);
+        rev.save();
+
+        UnsavedRevision rev1 = doc.createRevision();
+        Attachment currentAttachment =rev1.getAttachment(attachmentName);
+        assertNotNull(currentAttachment);
+
+        rev1.removeAttachment(attachmentName);
+        currentAttachment = rev1.getAttachment(attachmentName);
+        assertNull(currentAttachment); // otherwise NullPointerException when currentAttachment.getMetadata()
+        rev1.save();
+
+        currentAttachment = doc.getCurrentRevision().getAttachment(attachmentName);
+        assertNull(currentAttachment); // otherwise NullPointerException when currentAttachment.getMetadata()
+    }
+
+
 
     /**
      * Regression test for https://github.com/couchbase/couchbase-lite-android-core/issues/70
@@ -539,6 +587,55 @@ public class AttachmentsTest extends LiteTestCase {
         assertNotNull(attachments);
         assertEquals(1, attachments.size());
 
+    }
+
+
+    /**
+     * attempt to reproduce https://github.com/couchbase/couchbase-lite-android/issues/328 &
+     * https://github.com/couchbase/couchbase-lite-android/issues/325
+     */
+    public void testSetAttachmentsSequentially() throws CouchbaseLiteException, IOException {
+
+        // add a doc with an attachment
+        Document doc = database.createDocument();
+        String id = doc.getId();
+        Map<String, Object> newProperties = new HashMap<String, Object>();
+        newProperties.put("Iteration", 0);
+
+        doc.putProperties(newProperties);
+        UnsavedRevision rev = null;
+
+        Map<String, Object> curProperties;
+
+        InputStream attachmentStream = getAsset("attachment.png");
+
+        for(int i=0; i<50; i++) {
+
+            Log.e(Database.TAG, "TEST ITERATION " + i);
+            doc = database.getDocument(id);//not required
+            rev=doc.getCurrentRevision().createRevision();
+            rev.setAttachment("attachment" + i*2, "image/png", attachmentStream);
+            rev.save();
+
+            doc = database.getDocument(id);//not required
+            rev = doc.getCurrentRevision().createRevision();
+            rev.setAttachment("attachment" + i*2 + 1, "image/png", attachmentStream);
+            rev.save();
+
+            //doc = database.getDocument(id);//not required
+            curProperties =doc.getProperties();
+            assertEquals(4, curProperties.size());
+            assertEquals(i*2, curProperties.get("Iteration"));
+            newProperties = new HashMap<String, Object>();
+            newProperties.putAll(curProperties);
+            newProperties.put("Iteration", (i + 1) * 2);
+            doc.putProperties(newProperties);
+
+        }
+
+        Map<String, Object> attachments = (Map<String, Object>) doc.getCurrentRevision().getProperty("_attachments");
+        assertNotNull(attachments);
+        assertEquals(100, attachments.size());
     }
 
     /**

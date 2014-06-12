@@ -12,9 +12,12 @@ import com.couchbase.lite.Mapper;
 import com.couchbase.lite.Query;
 import com.couchbase.lite.QueryEnumerator;
 import com.couchbase.lite.QueryRow;
+import com.couchbase.lite.Revision;
 import com.couchbase.lite.SavedRevision;
 import com.couchbase.lite.Status;
 import com.couchbase.lite.UnsavedRevision;
+import com.couchbase.lite.ValidationContext;
+import com.couchbase.lite.Validator;
 import com.couchbase.lite.View;
 import com.couchbase.lite.auth.FacebookAuthorizer;
 import com.couchbase.lite.internal.Body;
@@ -649,6 +652,50 @@ public class ReplicationTest extends LiteTestCase {
 
     }
 
+    public void testValidationBlockCalled() throws Throwable {
+        String docIdTimestamp = Long.toString(System.currentTimeMillis());
+
+
+        final String doc1Id = String.format("doc1-%s", docIdTimestamp);
+
+        Log.d(TAG, "Adding " + doc1Id + " directly to sync gateway");
+        addDocWithId(doc1Id, null, false);
+        doPullReplication();
+
+        assertNotNull(database);
+        Log.d(TAG, "Fetching doc1 via id: " + doc1Id);
+        Document doc1 = database.getDocument(doc1Id);
+        Log.d(TAG, "doc1" + doc1);
+        assertNotNull(doc1);
+        assertNotNull(doc1.getCurrentRevisionId());
+        assertTrue(doc1.getCurrentRevisionId().startsWith("1-"));
+        assertNotNull(doc1.getProperties());
+        assertEquals(1, doc1.getProperties().get("foo"));
+
+
+        // Add Validation block to reject documents with foo:1
+        database.setValidation("foo_not_1", new Validator() {
+            @Override
+            public void validate(Revision newRevision, ValidationContext context) {
+                if (new Integer(1).equals(newRevision.getProperty("foo"))) {
+                    context.reject("Reject because foo is 1");
+                }
+            }
+        });
+
+        final String doc2Id = String.format("doc2-%s", docIdTimestamp);
+        Log.d(TAG, "Adding " + doc2Id + " directly to sync gateway");
+        addDocWithId(doc2Id, null, false);
+        doPullReplication();
+
+        Log.d(TAG, "Fetching doc2 via id: " + doc2Id);
+        Document doc2 = database.getDocument(doc2Id);
+        Log.d(TAG, "doc2" + doc2);
+        assertNotNull(doc2);
+        assertNull(doc2.getCurrentRevision());  // doc2 should have been rejected by validation, and therefore not present
+
+    }
+
     public void testPuller() throws Throwable {
 
         String docIdTimestamp = Long.toString(System.currentTimeMillis());
@@ -951,25 +998,31 @@ public class ReplicationTest extends LiteTestCase {
 
     }
 
+    /**
+     * This test simulates a condition in which the replication will fail due to an authentication
+     * error by using a FacebookAuthorizor with an invalid token.
+     *
+     * When the sync gateway tries to contact the facebook API, it will see that the token is invalid.
+     *
+     * The replicator should then stop and the getLastError() should contain a HttpResponseException
+     * with a 401 error code.
+     */
     public void testReplicatorErrorStatus() throws Exception {
 
-        // register bogus fb token
-        Map<String,Object> facebookTokenInfo = new HashMap<String,Object>();
-        facebookTokenInfo.put("email", "jchris@couchbase.com");
-        facebookTokenInfo.put("remote_url", getReplicationURL().toExternalForm());
-        facebookTokenInfo.put("access_token", "fake_access_token");
-        String destUrl = String.format("/_facebook_token", DEFAULT_TEST_DB);
-        Map<String,Object> result = (Map<String,Object>)sendBody("POST", destUrl, facebookTokenInfo, Status.OK, null);
-        Log.v(TAG, String.format("result %s", result));
+        if (isTestingAgainstSyncGateway()) {
 
-        // run replicator and make sure it has an error
-        Map<String,Object> properties = getPullReplicationParsedJson();
-        Replication replicator = manager.getReplicator(properties);
-        runReplication(replicator);
-        assertNotNull(replicator.getLastError());
-        assertTrue(replicator.getLastError() instanceof HttpResponseException);
-        assertEquals(401 /* unauthorized */, ((HttpResponseException)replicator.getLastError()).getStatusCode());
+            // register bogus fb token
+            FacebookAuthorizer.registerAccessToken("fake_access_token", "jchris@couchbase.com", getReplicationURL().toExternalForm());
 
+            // run replicator and make sure it has an error
+            Map<String,Object> properties = getPullReplicationParsedJson();
+            Replication replicator = manager.getReplicator(properties);
+            runReplication(replicator);
+            assertNotNull(replicator.getLastError());
+            assertTrue(replicator.getLastError() instanceof HttpResponseException);
+            assertEquals(401 /* unauthorized */, ((HttpResponseException)replicator.getLastError()).getStatusCode());
+
+        }
 
     }
 

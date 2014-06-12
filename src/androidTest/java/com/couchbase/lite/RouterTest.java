@@ -40,8 +40,8 @@ public class RouterTest extends LiteTestCase {
 
         send("GET", "/non-existant", Status.NOT_FOUND, null);
         send("GET", "/BadName", Status.BAD_REQUEST, null);
-        send("PUT", "/", Status.BAD_REQUEST, null);
-        send("POST", "/", Status.BAD_REQUEST, null);
+        send("PUT", "/", Status.NOT_FOUND, null);
+        send("POST", "/", Status.NOT_FOUND, null);
     }
 
     public void testDatabase() {
@@ -692,7 +692,7 @@ public class RouterTest extends LiteTestCase {
         boolean success = true;
 
         ArrayList<Object> activeTasks = (ArrayList<Object>)send("GET", "/_active_tasks", Status.OK, null);
-        while (activeTasks.size() > 0 && timeWaited < maxTimeToWaitMs) { // https://github.com/couchbase/couchbase-lite-android/issues/283
+        while (activeTasks.size() > 0 && timeWaited < maxTimeToWaitMs) {
             int timeToWait = 1000;
             Thread.sleep(timeToWait);
             activeTasks = (ArrayList<Object>)send("GET", "/_active_tasks", Status.OK, null);

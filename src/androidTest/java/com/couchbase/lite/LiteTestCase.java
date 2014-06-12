@@ -33,7 +33,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-public abstract class LiteTestCase extends LiteTestCaseBase { // https://github.com/couchbase/couchbase-lite-android/issues/285
+public abstract class LiteTestCase extends LiteTestCaseBase {
 
     public static final String TAG = "LiteTestCase";
 
@@ -390,7 +390,9 @@ public abstract class LiteTestCase extends LiteTestCaseBase { // https://github.
         assertEquals(rev3.getAttachmentNames(), attNames);
 
         assertEquals("text/plain; charset=utf-8", attach.getContentType());
-        assertEquals(IOUtils.toString(attach.getContent(), "UTF-8"), content);
+        InputStream attachInputStream = attach.getContent();
+        assertEquals(IOUtils.toString(attachInputStream, "UTF-8"), content);
+        attachInputStream.close();
         assertEquals(content.getBytes().length, attach.getLength());
 
         return doc;

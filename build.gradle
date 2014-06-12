@@ -4,7 +4,6 @@ apply plugin: 'maven'
 buildscript {
     repositories {
         mavenCentral()
-        // mavenLocal() https://github.com/couchbase/couchbase-lite-android/issues/280
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:0.9.+'
@@ -12,7 +11,7 @@ buildscript {
 }
 
 repositories {
-    mavenLocal() // Prevented from being deleted due to https://github.com/couchbase/couchbase-lite-android/issues/280
+    mavenLocal()
     maven { url 'http://files.couchbase.com/maven2/' }
     mavenCentral()
 }
@@ -60,13 +59,15 @@ dependencies {
 
     compile buildAndroidWithArtifacts == null ?
             project(':libraries:couchbase-lite-java-core') :
-            'com.couchbase.lite:java-core:' + System.getProperty("MAVEN_UPLOAD_VERSION") // https://github.com/couchbase/couchbase-lite-android/issues/238
+            'com.couchbase.lite:couchbase-lite-java-core:' + System.getProperty("MAVEN_UPLOAD_VERSION") // https://github.com/couchbase/couchbase-lite-android/issues/238
 
+    // temporary workaround to enable running tests against Couchbase Lite Listener.
+    // once tests are converted over to use mockwebserver, this can be ripped out.
+    // see https://github.com/couchbase/couchbase-lite-android/pull/300
     androidTestCompile buildAndroidWithArtifacts == null ?
             project(':libraries:couchbase-lite-java-listener') :
-            'com.couchbase.lite:java-listener:' + System.getProperty("MAVEN_UPLOAD_VERSION") // // https://github.com/couchbase/couchbase-lite-android/issues/287
+            'com.couchbase.lite:couchbase-lite-java-listener:' + System.getProperty("MAVEN_UPLOAD_VERSION") // https://github.com/couchbase/couchbase-lite-android/issues/287
 }
-
 
 task generateJavadocs(type: Javadoc) {
     source = android.sourceSets.main.java.srcDirs
@@ -86,7 +87,7 @@ task createMavenDirectory(type: Exec) {
 
     ext {
         uploadUser = System.getenv("MAVEN_UPLOAD_USERNAME") + ":" + System.getenv("MAVEN_UPLOAD_PASSWORD")
-        mkcolPath  = System.getenv("MAVEN_UPLOAD_REPO_URL") + "com/couchbase/lite/android/" + System.getenv("MAVEN_UPLOAD_VERSION") + "/"
+        mkcolPath  = System.getenv("MAVEN_UPLOAD_REPO_URL") + "com/couchbase/lite/couchbase-lite-android/" + System.getenv("MAVEN_UPLOAD_VERSION") + "/"
     }
     commandLine "curl", "--user", uploadUser, "-X", "MKCOL", mkcolPath
 }
@@ -99,25 +100,23 @@ task uploadArchivesWrapper(dependsOn: createMavenDirectory) << {
     uploadArchives.execute()
 }
 
-def mavenPath() {  // https://github.com/couchbase/couchbase-lite-android/issues/239
-    artifactory_local == "true" ?
+def mavenPath() {
+    System.getenv("MAVEN_BUILD_LOCAL") == "true" ?
             'file://' + new File(System.getProperty('user.home'), '.m2/repository').absolutePath :
-            artifactory_contextUrl + "/libs-release-local"
+            System.getProperty("MAVEN_UPLOAD_REPO_URL") // https://github.com/couchbase/couchbase-lite-android/issues/287
 }
 
 // this will upload, but will not first create a directory (which is needed on some servers)
 uploadArchives {
     repositories {
         mavenDeployer {
-            repository(url: mavenPath()) {  // https://github.com/couchbase/couchbase-lite-android/issues/239
-                authentication(userName: "${artifactory_user}", password: "${artifactory_password}")
-            //repository(url: System.getenv("MAVEN_UPLOAD_REPO_URL")) {
-            //    authentication(userName: System.getenv("MAVEN_UPLOAD_USERNAME"), password: System.getenv("MAVEN_UPLOAD_PASSWORD"))
+            repository(url: mavenPath()) {
+                authentication(userName: System.getenv("MAVEN_UPLOAD_USERNAME"), password: System.getenv("MAVEN_UPLOAD_PASSWORD"))
             }
             pom.version = "${System.properties['MAVEN_UPLOAD_VERSION']}"  // https://github.com/couchbase/couchbase-lite-android/issues/238
             //pom.version = System.getenv("MAVEN_UPLOAD_VERSION")
             pom.groupId = 'com.couchbase.lite'
-            pom.artifactId = 'android'
+            pom.artifactId = 'couchbase-lite-android'
             pom.project {
                 licenses {
                     license {

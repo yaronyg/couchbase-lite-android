@@ -1,7 +1,5 @@
 package com.couchbase.test.lite;
 
-// https://github.com/couchbase/couchbase-lite-android/issues/285
-
 import com.couchbase.lite.support.*;
 
 import java.io.*;
