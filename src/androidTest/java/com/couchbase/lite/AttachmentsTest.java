@@ -596,46 +596,101 @@ public class AttachmentsTest extends LiteTestCase {
      */
     public void testSetAttachmentsSequentially() throws CouchbaseLiteException, IOException {
 
-        // add a doc with an attachment
-        Document doc = database.createDocument();
-        String id = doc.getId();
-        Map<String, Object> newProperties = new HashMap<String, Object>();
-        newProperties.put("Iteration", 0);
+        boolean success = database.runInTransaction(new TransactionalTask() {
 
-        doc.putProperties(newProperties);
-        UnsavedRevision rev = null;
+            public boolean run() {
 
-        Map<String, Object> curProperties;
+                try {
+                    // add a doc with an attachment
+                    Document doc = database.createDocument();
+                    String id = doc.getId();
 
-        InputStream attachmentStream = getAsset("attachment.png");
+                    InputStream jsonStream = getAsset("300k.json");
 
-        for(int i=0; i<50; i++) {
+                    Map<String, Object> docProperties = null;
 
-            Log.e(Database.TAG, "TEST ITERATION " + i);
-            doc = database.getDocument(id);//not required
-            rev=doc.getCurrentRevision().createRevision();
-            rev.setAttachment("attachment" + i*2, "image/png", attachmentStream);
-            rev.save();
+                    docProperties = Manager.getObjectMapper().readValue(jsonStream, Map.class);
 
-            doc = database.getDocument(id);//not required
-            rev = doc.getCurrentRevision().createRevision();
-            rev.setAttachment("attachment" + i*2 + 1, "image/png", attachmentStream);
-            rev.save();
 
-            //doc = database.getDocument(id);//not required
-            curProperties =doc.getProperties();
-            assertEquals(4, curProperties.size());
-            assertEquals(i*2, curProperties.get("Iteration"));
-            newProperties = new HashMap<String, Object>();
-            newProperties.putAll(curProperties);
-            newProperties.put("Iteration", (i + 1) * 2);
-            doc.putProperties(newProperties);
+                    docProperties.put("Iteration", 0);
 
-        }
+                    doc.putProperties(docProperties);
 
-        Map<String, Object> attachments = (Map<String, Object>) doc.getCurrentRevision().getProperty("_attachments");
-        assertNotNull(attachments);
-        assertEquals(100, attachments.size());
+                    jsonStream.close();
+                    UnsavedRevision rev = null;
+
+
+                    for (int i = 0; i < 20; i++) {
+
+                        InputStream attachmentStream1 = getAsset("attachment.png");
+
+                        Log.e(Database.TAG, "TEST ITERATION " + i);
+                        doc = database.getDocument(id);//not required
+                        rev = doc.getCurrentRevision().createRevision();
+                        rev.setAttachment("attachment " + i * 5, "image/png", attachmentStream1);
+                        rev.save();
+
+                        attachmentStream1.close();
+
+
+                        InputStream attachmentStream2 = getAsset("attachment.png");
+                        doc = database.getDocument(id);//not required
+                        rev = doc.getCurrentRevision().createRevision();
+                        rev.setAttachment("attachment " + i * 5 + 1, "image/png", attachmentStream2);
+                        rev.save();
+
+                        attachmentStream2.close();
+
+                        InputStream attachmentStream3 = getAsset("attachment.png");
+                        doc = database.getDocument(id);//not required
+                        rev = doc.getCurrentRevision().createRevision();
+                        rev.setAttachment("attachment " + i * 5 + 2, "image/png", attachmentStream2);
+                        rev.save();
+
+                        attachmentStream3.close();
+
+                        InputStream attachmentStream4 = getAsset("attachment.png");
+                        doc = database.getDocument(id);//not required
+                        rev = doc.getCurrentRevision().createRevision();
+                        rev.setAttachment("attachment " + i * 5 + 3, "image/png", attachmentStream2);
+                        rev.save();
+
+                        attachmentStream4.close();
+
+                        InputStream attachmentStream5 = getAsset("attachment.png");
+                        doc = database.getDocument(id);//not required
+                        rev = doc.getCurrentRevision().createRevision();
+                        rev.setAttachment("attachment " + i * 5 + 4, "image/png", attachmentStream2);
+                        rev.save();
+
+                        attachmentStream5.close();
+
+                        Map<String, Object> curProperties;
+
+                        doc = database.getDocument(id);//not required
+                        curProperties = doc.getProperties();
+                        assertEquals(42, curProperties.size());
+                        assertEquals(i * 2, curProperties.get("Iteration"));
+                        docProperties = new HashMap<String, Object>();
+                        docProperties.putAll(curProperties);
+                        docProperties.put("Iteration", (i + 1) * 2);
+                        doc.putProperties(docProperties);
+
+
+                        Map<String, Object> attachments = (Map<String, Object>) doc.getCurrentRevision().getProperty("_attachments");
+                        assertNotNull(attachments);
+                        assertEquals(100, attachments.size());
+
+                    }
+                } catch (Exception e) {
+                    Log.e(Database.TAG, "Error deserializing properties from JSON", e);
+                    return false;
+                }
+
+                return true;
+            }
+
+        });
     }
 
     /**
@@ -655,5 +710,7 @@ public class AttachmentsTest extends LiteTestCase {
 
 
     }
+
+
 
 }
