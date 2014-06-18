@@ -67,6 +67,9 @@ dependencies {
     androidTestCompile buildAndroidWithArtifacts == null ?
             project(':libraries:couchbase-lite-java-listener') :
             'com.couchbase.lite:couchbase-lite-java-listener:' + System.getProperty("MAVEN_UPLOAD_VERSION") // https://github.com/couchbase/couchbase-lite-android/issues/287
+
+    androidTestCompile 'com.squareup.okhttp:mockwebserver:1.2.1'
+
 }
 
 task generateJavadocs(type: Javadoc) {
@@ -77,10 +80,6 @@ task generateJavadocs(type: Javadoc) {
     options.doclet = "ExcludeDoclet"
     options.showFromPublic()
     exclude "org/apache/http/**", "com/couchbase/touchdb/**"
-}
-
-task wrapper(type: Wrapper) {
-	gradleVersion = '1.10'
 }
 
 task createMavenDirectory(type: Exec) {

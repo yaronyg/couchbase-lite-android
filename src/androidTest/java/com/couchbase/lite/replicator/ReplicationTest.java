@@ -27,6 +27,9 @@ import com.couchbase.lite.support.HttpClientFactory;
 import com.couchbase.lite.threading.BackgroundTask;
 import com.couchbase.lite.util.Log;
 import com.couchbase.lite.util.TextUtils;
+import com.squareup.okhttp.mockwebserver.MockWebServer;
+import com.squareup.okhttp.mockwebserver.MockResponse;
+import com.squareup.okhttp.mockwebserver.RecordedRequest;
 
 import junit.framework.Assert;
 
@@ -696,6 +699,396 @@ public class ReplicationTest extends LiteTestCase {
 
     }
 
+    /**
+     *
+     * Under construction, ignore this
+     *
+     * Attempting to reproduce couchtalk issue:
+     *
+     * https://github.com/couchbase/couchbase-lite-android/issues/312
+     *
+     * - Add db docs change listener, whenever doc changes, restart replication
+     * - Mock webserver that always returns new docs to be pulled
+     * - Start puller
+     * - Verify that 10 docs are pulled w/ 10 successful restarts
+     */
+    public void underConstructionTestPullerRestart() throws Exception {
+
+        MockWebServer server = new MockWebServer();
+
+        MockResponse fakeCheckpointResponse = new MockResponse();
+        fakeCheckpointResponse.setStatus("HTTP/1.1 404 NOT FOUND").setHeader("Content-Type", "application/json");
+        server.enqueue(fakeCheckpointResponse);
+
+        MockResponse fakeChangesResponse = new MockResponse();
+        fakeChangesResponse.setStatus("HTTP/1.1 200 OK").setHeader("Content-Type", "application/json");
+        String changesBody = "{\"results\":[{\"seq\":2,\"id\":\"doc2\",\"changes\":[{\"rev\":\"1-5e38\"}]},{\"seq\":3,\"id\":\"doc3\",\"changes\":[{\"rev\":\"1-563b\"}]}],\"last_seq\":3}";
+        fakeChangesResponse.setBody(changesBody);
+        server.enqueue(fakeChangesResponse);
+
+        MockResponse fakeDoc2 = new MockResponse();
+        fakeDoc2.setStatus("HTTP/1.1 200 OK").setHeader("Content-Type", "application/json");
+        String doc2Body = "{\"_id\":\"doc2\",\"_rev\":\"1-5e38\",\"_revisions\":{\"ids\":[\"5e38\"],\"start\":1},\"fakefield1\":false,\"fakefield2\":1, \"fakefield3\":\"blah\"}";
+        fakeDoc2.setBody(doc2Body);
+        server.enqueue(fakeDoc2);
+
+        server.enqueue(fakeCheckpointResponse);
+        server.enqueue(fakeChangesResponse);  // will query changes again
+
+        MockResponse fakeDoc3 = new MockResponse();
+        fakeDoc3.setStatus("HTTP/1.1 200 OK").setHeader("Content-Type", "application/json");
+        String doc3Body = "{\"_id\":\"doc3\",\"_rev\":\"1-5e48\",\"_revisions\":{\"ids\":[\"5e48\"],\"start\":1},\"fakefield1\":false,\"fakefield2\":1, \"fakefield3\":\"blah\"}";
+        fakeDoc3.setBody(doc3Body);
+        server.enqueue(fakeDoc3);
+
+        server.play();
+
+        URL baseUrl = server.getUrl("/db");
+        Log.d(TAG, "baseUrl: " + baseUrl);
+
+        final Replication repl = (Replication) database.createPullReplication(baseUrl);
+        repl.setContinuous(false);
+
+        database.addChangeListener(new Database.ChangeListener() {
+            @Override
+            public void changed(Database.ChangeEvent event) {
+                if (event.getChanges().size() > 0) {
+                    new Thread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                Thread.sleep(100);
+                            } catch (InterruptedException e) {
+                                e.printStackTrace();
+                            }
+                            repl.restart();
+                        }
+                    }).start();
+                }
+            }
+        });
+
+        Log.d(TAG, "Doing pull replication with: " + repl);
+        repl.start();
+        waitForReplicationFinishedXTimes(repl, 2);
+
+        assertNull(repl.getLastError());
+        Log.d(TAG, "Finished pull replication with: " + repl);
+
+        Document doc2Fetched = database.getDocument("doc2");
+        assertNotNull(doc2Fetched);
+        assertTrue(doc2Fetched.getCurrentRevisionId().startsWith("1-5e38"));
+
+        Document doc3Fetched = database.getDocument("doc3");
+        assertNotNull(doc3Fetched);
+        assertTrue(doc3Fetched.getCurrentRevisionId().startsWith("1-5e48"));
+
+
+    }
+
+    /**
+     *
+     * Under construction .. ignore this for now.
+     *
+     * Simulate the following:
+     *
+     * - Add a few docs and do a pull replication
+     * - One doc on sync gateway is now updated
+     * - Do a second pull replication
+     * - Assert we get the updated doc and save it locally
+     *
+     */
+    public void underConstructionTestPullerNoAttachmentsWithSecondPull() throws Throwable {
+
+        String doc1Id = "doc1";
+        String doc1Rev = "1-5e38";
+        String doc2Id = "doc2";
+        String doc2Rev = "1-563b";
+        int doc1Seq = 1;
+        int doc2Seq = 2;
+
+        // create mockwebserver and custom dispatcher
+        MockWebServer server = MockHelper.getMockWebServer();
+        MockDispatcher dispatcher = new MockDispatcher();
+        server.setDispatcher(dispatcher);
+
+        // checkpoint GET response w/ 404
+        MockResponse fakeCheckpointResponse = new MockResponse();
+        MockHelper.set404NotFoundJson(fakeCheckpointResponse);
+        dispatcher.enqueueResponse("/db/_local.*", fakeCheckpointResponse);
+
+        // _changes response
+        MockChangesFeed mockChangesFeed = new MockChangesFeed();
+        MockChangedDoc mockChangedDoc1 = new MockChangedDoc()
+                .setSeq(doc1Seq)
+                .setDocId(doc1Id)
+                .setChangedRevIds(Arrays.asList(doc1Rev));
+        mockChangesFeed.add(mockChangedDoc1);
+        MockChangedDoc mockChangedDoc2 = new MockChangedDoc()
+                .setSeq(doc2Seq)
+                .setDocId(doc2Id)
+                .setChangedRevIds(Arrays.asList(doc2Rev));
+        mockChangesFeed.add(mockChangedDoc2);
+        dispatcher.enqueueResponse("/db/_changes.*", mockChangesFeed.generateMockResponse());
+
+        // doc1 response
+        Map<String, Object> doc1JsonMap = MockHelper.generateRandomJsonMap();
+        MockDocument mockDocument = new MockDocument()
+                .setDocId(doc1Id)
+                .setRev(doc1Rev)
+                .setJsonMap(doc1JsonMap);
+        dispatcher.enqueueResponse("/db/doc1.*", mockDocument.generateMockResponse());
+
+        // doc2 response
+        Map<String, Object> doc2JsonMap = MockHelper.generateRandomJsonMap();
+        mockDocument = new MockDocument()
+                .setDocId(doc2Id)
+                .setRev(doc2Rev)
+                .setJsonMap(doc2JsonMap);
+        dispatcher.enqueueResponse("/db/doc2.*", mockDocument.generateMockResponse());
+
+        // checkpoint PUT response
+        MockCheckpointPut mockCheckpointPut = new MockCheckpointPut();
+        dispatcher.enqueueResponse("/db/_local.*", mockCheckpointPut);
+
+        // start mock server
+        server.play();
+
+        // run pull replication
+        doPullReplication(server.getUrl("/db"));
+
+        // assert that we now have both docs in local db
+        assertNotNull(database);
+        Log.d(TAG, "Fetching doc1 via id: " + doc1Id);
+        Document doc1 = database.getDocument(doc1Id);
+        Log.d(TAG, doc1Id + doc1);
+        assertNotNull(doc1);
+        assertNotNull(doc1.getCurrentRevisionId());
+        assertTrue(doc1.getCurrentRevisionId().startsWith("1-"));
+        assertNotNull(doc1.getProperties());
+        assertEquals(1, doc1.getProperties().get("foo"));
+        Log.d(TAG, "Fetching doc2 via id: " + doc2Id);
+        Document doc2 = database.getDocument(doc2Id);
+        assertNotNull(doc2);
+        assertNotNull(doc2.getCurrentRevisionId());
+        assertNotNull(doc2.getProperties());
+        assertTrue(doc2.getCurrentRevisionId().startsWith("1-"));
+        assertEquals(1, doc2.getProperties().get("foo"));
+
+        // make assertions about outgoing requests from replicator -> mock
+        RecordedRequest getCheckpointRequest = server.takeRequest();
+        assertTrue(getCheckpointRequest.getMethod().equals("GET"));
+        assertTrue(getCheckpointRequest.getPath().matches("/db/_local.*"));
+        RecordedRequest getChangesFeedRequest = server.takeRequest();
+        assertTrue(getChangesFeedRequest.getMethod().equals("GET") || getChangesFeedRequest.getMethod().equals("POST"));
+        assertTrue(getChangesFeedRequest.getPath().matches("/db/_changes.*"));
+        RecordedRequest doc1Request = server.takeRequest();
+        assertTrue(doc1Request.getMethod().equals("GET"));
+        assertTrue(doc1Request.getPath().matches("/db/doc1.*"));
+        RecordedRequest doc2Request = server.takeRequest();
+        assertTrue(doc2Request.getMethod().equals("GET"));
+        assertTrue(doc2Request.getPath().matches("/db/doc2.*"));
+        RecordedRequest putCheckpointRequest = server.takeRequest();
+        assertTrue(putCheckpointRequest.getMethod().equals("PUT"));
+        assertTrue(putCheckpointRequest.getPath().matches("/db/_local.*"));
+        // assertTrue(server.takeRequest() == null);  // TODO: figure out why the replicator is sending extra PUT Checkpoint requests
+
+        // workaround for replicator is sending extra PUT Checkpoint requests -- clean out recorded requests
+        RecordedRequest req1 = server.takeRequest();
+
+        // 2nd pull ---------------------------
+
+        doc1Rev = "2-2e38";
+        doc1Seq = 3;
+
+
+        // checkpoint GET response w/ seq = 2
+        // 	return fmt.Sprintf(`{"_id":"_local/%s","ok":true,"_rev":"0-1","lastSequence":"%v"}`, checkpointAddress, lastSequence)
+        MockCheckpointGet mockCheckpointGet = new MockCheckpointGet();
+        mockCheckpointGet.setOk("true");
+        mockCheckpointGet.setRev("0-1");
+        mockCheckpointGet.setLastSequence("2");
+        dispatcher.enqueueResponse("/db/_local.*", mockCheckpointGet);
+
+        // _changes response
+        mockChangesFeed = new MockChangesFeed();
+        mockChangedDoc1 = new MockChangedDoc()
+                .setSeq(doc1Seq)
+                .setDocId(doc1Id)
+                .setChangedRevIds(Arrays.asList(doc1Rev));
+        mockChangesFeed.add(mockChangedDoc1);
+        MockResponse fakeChangesResponse = mockChangesFeed.generateMockResponse();
+        dispatcher.enqueueResponse("/db/_changes.*", fakeChangesResponse);
+
+        // doc1 response
+        doc1JsonMap = MockHelper.generateRandomJsonMap();
+        mockDocument = new MockDocument()
+                .setDocId(doc1Id)
+                .setRev(doc1Rev)
+                .setJsonMap(doc1JsonMap);
+        dispatcher.enqueueResponse("/db/doc1.*", mockDocument.generateMockResponse());
+
+        // checkpoint PUT response
+        mockCheckpointPut = new MockCheckpointPut();
+        dispatcher.enqueueResponse("/db/_local.*", mockCheckpointPut);
+
+        // run pull replication
+        doPullReplication(server.getUrl("/db"));
+
+        // make assertions about outgoing requests from replicator -> mock
+        getCheckpointRequest = server.takeRequest();
+        assertTrue(getCheckpointRequest.getMethod().equals("GET"));
+        assertTrue(getCheckpointRequest.getPath().matches("/db/_local.*"));
+        getChangesFeedRequest = server.takeRequest();
+        assertTrue(getChangesFeedRequest.getMethod().equals("GET") || getChangesFeedRequest.getMethod().equals("POST"));
+        assertTrue(getChangesFeedRequest.getPath().matches("/db/_changes.*")); // TODO: verify since param
+        Log.d(TAG, "changes feed request: %s", getChangesFeedRequest.getPath());
+        doc1Request = server.takeRequest();
+        assertTrue(doc1Request.getMethod().equals("GET"));
+        assertTrue(doc1Request.getPath().matches("/db/doc1\\?rev=2-2e38.*"));  // /db/doc1?rev=2-2e38&revs=true&attachments=true&atts_since=%5B%221-5e38%22%5D
+        putCheckpointRequest = server.takeRequest();
+        assertTrue(putCheckpointRequest.getMethod().equals("PUT"));
+        assertTrue(putCheckpointRequest.getPath().matches("/db/_local.*")); // TODO: verify that the sequence looks right
+        assertTrue(putCheckpointRequest.getUtf8Body().contains("\"lastSequence\":\"3\""));
+
+
+        server.shutdown();
+
+        /*
+        // create mockwebserver and custom dispatcher
+        MockWebServer server = MockHelper.getMockWebServer();
+        MockDispatcher dispatcher = new MockDispatcher();
+        server.setDispatcher(dispatcher);
+
+        // checkpoint GET response w/ seq = 2
+        // 	return fmt.Sprintf(`{"_id":"_local/%s","ok":true,"_rev":"0-1","lastSequence":"%v"}`, checkpointAddress, lastSequence)
+        MockCheckpointGet mockCheckpointGet = new MockCheckpointGet();
+        mockCheckpointGet.setId("");
+        mockCheckpointGet.setOk(true);
+        mockCheckpointGet.setRev("0-1");
+        mockCheckpointGet.setLastSequence("2");
+
+
+        dispatcher.enqueueResponse("/db/_local.*", mockCheckpointPut.generateMockResponse());
+
+        MockResponse fakeCheckpointResponse = new MockResponse();
+        MockHelper.set404NotFoundJson(fakeCheckpointResponse);
+        dispatcher.enqueueResponse("/db/_local.*", fakeCheckpointResponse);
+        */
+
+
+    }
+
+    /**
+     * Failing due to https://github.com/couchbase/couchbase-lite-java-core/issues/231
+     */
+    public void failingTestMockPullerNoAttachments() throws Exception {
+
+        String doc1Id = "doc1";
+        String doc1Rev = "1-5e38";
+        String doc2Id = "doc2";
+        String doc2Rev = "1-563b";
+        int doc1Seq = 1;
+        int doc2Seq = 2;
+
+        // create mockwebserver and custom dispatcher
+        MockWebServer server = MockHelper.getMockWebServer();
+        MockDispatcher dispatcher = new MockDispatcher();
+        server.setDispatcher(dispatcher);
+
+        // checkpoint GET response w/ 404
+        MockResponse fakeCheckpointResponse = new MockResponse();
+        MockHelper.set404NotFoundJson(fakeCheckpointResponse);
+        dispatcher.enqueueResponse("/db/_local.*", fakeCheckpointResponse);
+
+        // _changes response
+        MockChangesFeed mockChangesFeed = new MockChangesFeed();
+        MockChangedDoc mockChangedDoc1 = new MockChangedDoc()
+                .setSeq(doc1Seq)
+                .setDocId(doc1Id)
+                .setChangedRevIds(Arrays.asList(doc1Rev));
+        mockChangesFeed.add(mockChangedDoc1);
+        MockChangedDoc mockChangedDoc2 = new MockChangedDoc()
+                .setSeq(doc2Seq)
+                .setDocId(doc2Id)
+                .setChangedRevIds(Arrays.asList(doc2Rev));
+        mockChangesFeed.add(mockChangedDoc2);
+        dispatcher.enqueueResponse("/db/_changes.*", mockChangesFeed.generateMockResponse());
+
+        // doc1 response
+        Map<String, Object> doc1JsonMap = MockHelper.generateRandomJsonMap();
+        MockDocument mockDocument = new MockDocument()
+                .setDocId(doc1Id)
+                .setRev(doc1Rev)
+                .setJsonMap(doc1JsonMap);
+        dispatcher.enqueueResponse("/db/doc1.*", mockDocument.generateMockResponse());
+
+        // doc2 response
+        Map<String, Object> doc2JsonMap = MockHelper.generateRandomJsonMap();
+        mockDocument = new MockDocument()
+                .setDocId(doc2Id)
+                .setRev(doc2Rev)
+                .setJsonMap(doc2JsonMap);
+        dispatcher.enqueueResponse("/db/doc2.*", mockDocument.generateMockResponse());
+
+        // checkpoint PUT responses
+        // it currently sends two checkpoint PUT responses back to back,
+        // which may be related to https://github.com/couchbase/couchbase-lite-java-core/issues/231
+        MockCheckpointPut mockCheckpointPut = new MockCheckpointPut();
+        dispatcher.enqueueResponse("/db/_local.*", mockCheckpointPut);
+        dispatcher.enqueueResponse("/db/_local.*", mockCheckpointPut);
+
+        // start mock server
+        server.play();
+
+        // run pull replication
+        Replication pullReplication = doPullReplication(server.getUrl("/db"));
+
+        // assert that we now have both docs in local db
+        assertNotNull(database);
+        Document doc1 = database.getDocument(doc1Id);
+        assertNotNull(doc1);
+        assertNotNull(doc1.getCurrentRevisionId());
+        assertTrue(doc1.getCurrentRevisionId().startsWith("1-"));
+        assertNotNull(doc1.getProperties());
+        assertEquals(1, doc1.getProperties().get("foo"));
+        Document doc2 = database.getDocument(doc2Id);
+        assertNotNull(doc2);
+        assertNotNull(doc2.getCurrentRevisionId());
+        assertNotNull(doc2.getProperties());
+        assertTrue(doc2.getCurrentRevisionId().startsWith("1-"));
+        assertEquals(1, doc2.getProperties().get("foo"));
+
+        // make assertions about outgoing requests from replicator -> mock
+        RecordedRequest getCheckpointRequest = server.takeRequest();
+        assertTrue(getCheckpointRequest.getMethod().equals("GET"));
+        assertTrue(getCheckpointRequest.getPath().matches("/db/_local.*"));
+        RecordedRequest getChangesFeedRequest = server.takeRequest();
+        assertTrue(getChangesFeedRequest.getMethod().equals("GET") || getChangesFeedRequest.getMethod().equals("POST"));
+        assertTrue(getChangesFeedRequest.getPath().matches("/db/_changes.*"));
+        RecordedRequest doc1Request = server.takeRequest();
+        assertTrue(doc1Request.getMethod().equals("GET"));
+        assertTrue(doc1Request.getPath().matches("/db/doc1.*"));
+        RecordedRequest doc2Request = server.takeRequest();
+        assertTrue(doc2Request.getMethod().equals("GET"));
+        assertTrue(doc2Request.getPath().matches("/db/doc2.*"));
+        RecordedRequest putCheckpointRequest = server.takeRequest();
+        assertTrue(putCheckpointRequest.getMethod().equals("PUT"));
+        assertTrue(putCheckpointRequest.getPath().matches("/db/_local.*"));
+        putCheckpointRequest = server.takeRequest();
+        assertTrue(putCheckpointRequest.getMethod().equals("PUT"));
+        assertTrue(putCheckpointRequest.getPath().matches("/db/_local.*"));
+
+        // make assertion about our local sequence
+        String lastSequence = database.lastSequenceWithCheckpointId(pullReplication.remoteCheckpointDocID());
+        assertEquals(Integer.toString(doc2Seq), lastSequence);
+
+        // Shut down the server. Instances cannot be reused.
+        server.shutdown();
+
+    }
+
+
     public void testPuller() throws Throwable {
 
         String docIdTimestamp = Long.toString(System.currentTimeMillis());
@@ -743,7 +1136,10 @@ public class ReplicationTest extends LiteTestCase {
         assertTrue(doc1Fetched.getCurrentRevisionId().startsWith("2-"));
         assertEquals(2, doc1Fetched.getProperties().get("foo"));
 
+
+
         Log.d(TAG, "testPuller() finished");
+
 
 
     }
@@ -805,22 +1201,25 @@ public class ReplicationTest extends LiteTestCase {
 
     }
 
-    private void doPullReplication() {
+    private Replication doPullReplication() {
         URL remote = getReplicationURL();
+        return doPullReplication(remote);
+    }
+
+    private Replication doPullReplication(URL url) {
 
         CountDownLatch replicationDoneSignal = new CountDownLatch(1);
 
-        final Replication repl = (Replication) database.createPullReplication(remote);
+        final Replication repl = (Replication) database.createPullReplication(url);
         repl.setContinuous(false);
 
         Log.d(TAG, "Doing pull replication with: " + repl);
         runReplication(repl);
         assertNull(repl.getLastError());
         Log.d(TAG, "Finished pull replication with: " + repl);
-
+        return repl;
 
     }
-
 
     private void addDocWithId(String docId, String attachmentName, boolean gzipped) throws IOException {
 
