@@ -101,7 +101,7 @@ task uploadArchivesWrapper(dependsOn: createMavenDirectory) << {
 }
 
 def mavenPath() {
-    System.getenv("MAVEN_BUILD_LOCAL") == "true" ?
+    System.getProperty("MAVEN_BUILD_LOCAL") == "true" ? // https://github.com/couchbase/couchbase-lite-android/issues/238
             'file://' + new File(System.getProperty('user.home'), '.m2/repository').absolutePath :
             System.getProperty("MAVEN_UPLOAD_REPO_URL") // https://github.com/couchbase/couchbase-lite-android/issues/287
 }
@@ -111,7 +111,7 @@ uploadArchives {
     repositories {
         mavenDeployer {
             repository(url: mavenPath()) {
-                authentication(userName: System.getenv("MAVEN_UPLOAD_USERNAME"), password: System.getenv("MAVEN_UPLOAD_PASSWORD"))
+                authentication(userName: System.getProperty("MAVEN_UPLOAD_USERNAME"), password: System.getProperty("MAVEN_UPLOAD_PASSWORD")) // https://github.com/couchbase/couchbase-lite-android/issues/287
             }
             pom.version = "${System.properties['MAVEN_UPLOAD_VERSION']}"  // https://github.com/couchbase/couchbase-lite-android/issues/238
             //pom.version = System.getenv("MAVEN_UPLOAD_VERSION")
