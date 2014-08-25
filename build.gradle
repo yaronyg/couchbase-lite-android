@@ -1,5 +1,5 @@
 apply plugin: 'android-library'
-apply plugin: 'maven'
+apply plugin: 'android-maven'
 
 buildscript {
     repositories {
@@ -7,12 +7,19 @@ buildscript {
     }
     dependencies {
         classpath 'com.android.tools.build:gradle:0.10.+'
+        classpath 'com.github.dcendents:android-maven-plugin:1.1'
     }
 }
+
+version = "${System.properties['MAVEN_UPLOAD_VERSION']}"  // https://github.com/couchbase/couchbase-lite-android/issues/238
+group = 'com.couchbase.lite'
+archivesBaseName = 'couchbase-lite-android'
 
 repositories {
     mavenLocal()
     maven { url 'http://files.couchbase.com/maven2/' }
+    maven { url "http://thaliartifactory.cloudapp.net/artifactory/libs-snapshot" }
+    maven { url "http://thaliartifactory.cloudapp.net/artifactory/libs-release" }
     mavenCentral()
 }
 
@@ -106,10 +113,6 @@ uploadArchives {
             repository(url: System.getProperty('MAVEN_UPLOAD_REPO_URL')) {
                 authentication(userName: System.getProperty("MAVEN_UPLOAD_USERNAME"), password: System.getProperty("MAVEN_UPLOAD_PASSWORD")) // https://github.com/couchbase/couchbase-lite-android/issues/287
             }
-            pom.version = "${System.properties['MAVEN_UPLOAD_VERSION']}"  // https://github.com/couchbase/couchbase-lite-android/issues/238
-            //pom.version = System.getenv("MAVEN_UPLOAD_VERSION")
-            pom.groupId = 'com.couchbase.lite'
-            pom.artifactId = 'couchbase-lite-android'
             pom.project {
                 licenses {
                     license {
