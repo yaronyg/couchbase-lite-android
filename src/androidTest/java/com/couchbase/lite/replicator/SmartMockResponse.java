@@ -12,4 +12,12 @@ public interface SmartMockResponse {
 
     public MockResponse generateMockResponse(RecordedRequest request);
 
+    public boolean isSticky();
+
+    /**
+     * @return the delay, in milliseconds, before the MockDispatcher should
+     * return this response.
+     */
+    public long delayMs();
+
 }

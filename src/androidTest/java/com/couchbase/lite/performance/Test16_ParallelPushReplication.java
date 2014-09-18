@@ -20,37 +20,22 @@ package com.couchbase.lite.performance;
 import com.couchbase.lite.CouchbaseLiteException;
 import com.couchbase.lite.Document;
 import com.couchbase.lite.LiteTestCase;
-import com.couchbase.lite.Status;
-import com.couchbase.lite.TransactionalTask;
-import com.couchbase.lite.internal.Body;
-import com.couchbase.lite.internal.RevisionInternal;
 import com.couchbase.lite.replicator.Replication;
 import com.couchbase.lite.support.Base64;
-import com.couchbase.lite.threading.BackgroundTask;
 import com.couchbase.lite.util.Log;
 
 import junit.framework.Assert;
 
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.io.output.ByteArrayOutputStream;
-import org.apache.http.HttpResponse;
-import org.apache.http.HttpStatus;
-import org.apache.http.StatusLine;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.DefaultHttpClient;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
 
-public class Test6_PushReplication extends LiteTestCase {
+public class Test16_ParallelPushReplication extends LiteTestCase {
 
     public static final String TAG = "PushReplicationPerformance";
 
@@ -74,20 +59,69 @@ public class Test6_PushReplication extends LiteTestCase {
         }
     }
 
+    /*
+     * Test expects 4 remote datbases named db0, db1, db2, db3
+     */
     public void ignoretestPushReplicationPerformance() throws CouchbaseLiteException {
 
         long startMillis = System.currentTimeMillis();
 
-        URL remote = getReplicationURL();
+        URL remote0 = getReplicationSubURL("0");
+        URL remote1 = getReplicationSubURL("1");
+        URL remote2 = getReplicationSubURL("2");
+        URL remote3 = getReplicationSubURL("3");
 
-        final Replication repl = database.createPushReplication(remote);
-        repl.setContinuous(false);
-        if (!isSyncGateway(remote)) {
-            repl.setCreateTarget(true);
-            Assert.assertTrue(repl.shouldCreateTarget());
+        final Replication repl0 = database.createPushReplication(remote0);
+        repl0.setContinuous(false);
+        if (!isSyncGateway(remote0)) {
+            repl0.setCreateTarget(true);
+            Assert.assertTrue(repl0.shouldCreateTarget());
         }
 
-        runReplication(repl);
+        final Replication repl1 = database.createPushReplication(remote1);
+        repl1.setContinuous(false);
+        if (!isSyncGateway(remote1)) {
+            repl1.setCreateTarget(true);
+            Assert.assertTrue(repl1.shouldCreateTarget());
+        }
+
+        final Replication repl2 = database.createPushReplication(remote2);
+        repl2.setContinuous(false);
+        if (!isSyncGateway(remote2)) {
+            repl2.setCreateTarget(true);
+            Assert.assertTrue(repl2.shouldCreateTarget());
+        }
+
+        final Replication repl3 = database.createPushReplication(remote3);
+        repl3.setContinuous(false);
+        if (!isSyncGateway(remote3)) {
+            repl3.setCreateTarget(true);
+            Assert.assertTrue(repl3.shouldCreateTarget());
+        }
+
+        Thread t0 = new Thread() {
+            public void run() {
+                runReplication(repl0);
+            }
+        };
+
+        Thread t1 = new Thread() {
+            public void run() {
+                runReplication(repl1);
+            }
+        };
+
+        Thread t2 = new Thread() {
+            public void run() {
+                runReplication(repl2);
+            }
+        };
+
+        t0.start();
+        t1.start();
+        t2.start();
+
+        runReplication(repl3);
 
         Log.d(TAG, "testPusher() finished");
 

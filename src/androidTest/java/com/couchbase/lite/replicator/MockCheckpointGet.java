@@ -29,6 +29,8 @@ public class MockCheckpointGet implements SmartMockResponse {
     private String ok;
     private String rev;
     private String lastSequence;
+    private boolean sticky;
+    private boolean is404;
 
     public String getId() {
         return id;
@@ -88,6 +90,10 @@ public class MockCheckpointGet implements SmartMockResponse {
         }
 
         MockResponse mockResponse = new MockResponse();
+        if (is404) {
+            MockHelper.set404NotFoundJson(mockResponse);
+            return mockResponse;
+        }
 
         // extract id from request
         // /db/_local/e11a8567a2ecaf27c52d02899fa82258a343d720 -> _local/e11a8567a2ecaf27c52d02899fa82258a343d720
@@ -108,4 +114,21 @@ public class MockCheckpointGet implements SmartMockResponse {
         return mockResponse;
     }
 
+    @Override
+    public boolean isSticky() {
+        return this.sticky;
+    }
+
+    @Override
+    public long delayMs() {
+        return 0;
+    }
+
+    public void setSticky(boolean sticky) {
+        this.sticky = sticky;
+    }
+
+    public void set404(boolean is404) {
+        this.is404 = is404;
+    }
 }

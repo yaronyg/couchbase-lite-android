@@ -56,8 +56,8 @@ public class Test7_PullReplication extends LiteTestCase {
 
     private static final String _propertyValue = "1234567";
 
-    @Override
-    protected void setUp() throws Exception {
+    //@Override
+    protected void ignoresetUp() throws Exception {
         Log.v(TAG, "DeleteDBPerformance setUp");
         super.setUp();
 
@@ -78,7 +78,7 @@ public class Test7_PullReplication extends LiteTestCase {
         }
     }
 
-    public void testPullReplicationPerformance() throws CouchbaseLiteException {
+    public void ignoretestPullReplicationPerformance() throws CouchbaseLiteException {
 
         long startMillis = System.currentTimeMillis();
 

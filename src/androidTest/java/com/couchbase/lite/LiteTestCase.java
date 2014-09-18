@@ -1,6 +1,5 @@
 package com.couchbase.lite;
 
-import com.couchbase.lite.listener.LiteListener;
 import com.couchbase.test.lite.*;
 
 import com.couchbase.lite.internal.Body;
@@ -39,8 +38,6 @@ public abstract class LiteTestCase extends LiteTestCaseBase {
 
     private static boolean initializedUrlHandler = false;
 
-    protected static LiteListener testListener = null;
-
     protected ObjectMapper mapper = new ObjectMapper();
 
     protected Manager manager = null;
@@ -61,9 +58,7 @@ public abstract class LiteTestCase extends LiteTestCaseBase {
         loadCustomProperties();
         startCBLite();
         startDatabase();
-        if (Boolean.parseBoolean(System.getProperty("LiteListener"))) {
-            startListener();
-        }
+
     }
 
     protected InputStream getAsset(String name) {
@@ -74,6 +69,7 @@ public abstract class LiteTestCase extends LiteTestCaseBase {
         LiteTestContext context = new LiteTestContext();
         Manager.enableLogging(Log.TAG, Log.VERBOSE);
         Manager.enableLogging(Log.TAG_SYNC, Log.VERBOSE);
+        Manager.enableLogging(Log.TAG_SYNC_ASYNC_TASK, Log.VERBOSE);
         Manager.enableLogging(Log.TAG_QUERY, Log.VERBOSE);
         Manager.enableLogging(Log.TAG_VIEW, Log.VERBOSE);
         Manager.enableLogging(Log.TAG_CHANGE_TRACKER, Log.VERBOSE);
@@ -92,20 +88,6 @@ public abstract class LiteTestCase extends LiteTestCaseBase {
         }
     }
 
-    protected void startListener() throws IOException, CouchbaseLiteException {
-        // In theory we only set up the listener once across all tests because this mimics the behavior
-        // of the sync gateway which was the original server these tests are run against which has a single
-        // instance used all the time. But the other reason we only start the listener once is that
-        // there is a bug in TJWS (https://github.com/couchbase/couchbase-lite-java-listener/issues/43) that
-        // keeps the listener from stopping even when you tell it to stop.
-        if (testListener == null) {
-            LiteTestContext context = new LiteTestContext("testlistener");
-            Manager listenerManager = new Manager(context, Manager.DEFAULT_OPTIONS);
-            listenerManager.getDatabase(getReplicationDatabase());
-            testListener = new LiteListener(listenerManager, getReplicationPort(), null);
-            testListener.start();
-        }
-    }
 
     protected Database startDatabase() throws CouchbaseLiteException {
         database = ensureEmptyDatabase(DEFAULT_TEST_DB);
@@ -180,6 +162,18 @@ public abstract class LiteTestCase extends LiteTestCaseBase {
         }
     }
 
+    protected URL getReplicationSubURL(String subIndex)  {
+        try {
+            if(getReplicationAdminUser() != null && getReplicationAdminUser().trim().length() > 0) {
+                return new URL(String.format("%s://%s:%s@%s:%d/%s%s", getReplicationProtocol(), getReplicationAdminUser(), getReplicationAdminPassword(), getReplicationServer(), getReplicationPort(), getReplicationDatabase(),subIndex));
+            } else {
+                return new URL(String.format("%s://%s:%d/%s%s", getReplicationProtocol(), getReplicationServer(), getReplicationPort(), getReplicationDatabase(),subIndex));
+            }
+        } catch (MalformedURLException e) {
+            throw new IllegalArgumentException(e);
+        }
+    }
+
     protected boolean isTestingAgainstSyncGateway() {
         return getReplicationPort() == 4984;
     }
@@ -221,13 +215,10 @@ public abstract class LiteTestCase extends LiteTestCaseBase {
 
     }
 
-    public Map<String, Object> getPushReplicationParsedJson() throws IOException {
-
-        Map<String,Object> authProperties = getReplicationAuthParsedJson();
+    public Map<String, Object> getPushReplicationParsedJson(URL url) throws IOException {
 
         Map<String,Object> targetProperties = new HashMap<String,Object>();
-        targetProperties.put("url", getReplicationURL().toExternalForm());
-        targetProperties.put("auth", authProperties);
+        targetProperties.put("url", url.toExternalForm());
 
         Map<String,Object> properties = new HashMap<String,Object>();
         properties.put("source", DEFAULT_TEST_DB);
@@ -235,13 +226,10 @@ public abstract class LiteTestCase extends LiteTestCaseBase {
         return properties;
     }
 
-    public Map<String, Object> getPullReplicationParsedJson() throws IOException {
-
-        Map<String,Object> authProperties = getReplicationAuthParsedJson();
+    public Map<String, Object> getPullReplicationParsedJson(URL url) throws IOException {
 
         Map<String,Object> sourceProperties = new HashMap<String,Object>();
-        sourceProperties.put("url", getReplicationURL().toExternalForm());
-        sourceProperties.put("auth", authProperties);
+        sourceProperties.put("url", url.toExternalForm());
 
         Map<String,Object> properties = new HashMap<String,Object>();
         properties.put("source", sourceProperties);
@@ -447,9 +435,12 @@ public abstract class LiteTestCase extends LiteTestCaseBase {
     }
 
     public void runReplication(Replication replication) {
+        runReplication(replication, true);
+    }
+
+    public void runReplication(Replication replication, boolean allowError) {
 
         CountDownLatch replicationDoneSignal = new CountDownLatch(1);
-
 
         ReplicationFinishedObserver replicationFinishedObserver = new ReplicationFinishedObserver(replicationDoneSignal);
         replication.addChangeListener(replicationFinishedObserver);
@@ -471,8 +462,13 @@ public abstract class LiteTestCase extends LiteTestCaseBase {
             e.printStackTrace();
         }
 
-        replication.removeChangeListener(replicationFinishedObserver);
+        if (!allowError) {
+            if (replication.getLastError() != null) {
+                throw new RuntimeException("Replication had unexpected error: %s", replication.getLastError());
+            }
+        }
 
+        replication.removeChangeListener(replicationFinishedObserver);
 
 
     }
@@ -541,9 +537,8 @@ public abstract class LiteTestCase extends LiteTestCaseBase {
 
             // see https://github.com/couchbase/couchbase-lite-java-core/issues/100
             if (replicator.getCompletedChangesCount() > replicator.getChangesCount()) {
-                String msg = String.format("replicator.getCompletedChangesCount() - %d > replicator.getChangesCount() - %d", replicator.getCompletedChangesCount(), replicator.getChangesCount());
-                Log.d(TAG, msg);
-                throw new RuntimeException(msg);
+                String msg = String.format("invalid changes count: replicator.getCompletedChangesCount() - %d > replicator.getChangesCount() - %d", replicator.getCompletedChangesCount(), replicator.getChangesCount());
+                Log.w(TAG, msg);
             }
 
             if (!replicator.isRunning()) {

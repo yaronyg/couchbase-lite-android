@@ -15,4 +15,14 @@ public class WrappedSmartMockResponse implements SmartMockResponse {
     public MockResponse generateMockResponse(RecordedRequest request) {
         return mockResponse;
     }
+
+    @Override
+    public boolean isSticky() {
+        return false;
+    }
+
+    @Override
+    public long delayMs() {
+        return 0;
+    }
 }
